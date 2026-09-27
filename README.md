@@ -26,3 +26,21 @@
 | **Should Have** | Цветовые категории (`ON DELETE SET NULL`), подзадачи (`ON DELETE CASCADE`), приоритеты (`low`/`medium`/`high`), сроки и просрочки, поиск, фильтрация, сортировка, статистика, адаптивная вёрстка (WCAG 2.0) |
 | **Could Have** | Манифест PWA и базовый Service Worker, статическое демо на GitHub Pages, скрипты резервного копирования PostgreSQL (`pg_dump`) |
 | **Won't Have** | Push/Telegram-уведомления по расписанию, совместные командные доски с ролевой моделью |
+
+## Планируемый стек технологий
+
+- **Backend:** Python 3.12, FastAPI, SQLAlchemy 2, Pydantic v2, PyJWT, bcrypt, psycopg v3
+- **СУБД:** PostgreSQL 16 (`postgres:16-alpine`)
+- **Frontend:** HTML5 (семантические теги, WAI-ARIA), CSS3 (БЭМ, Flexbox, Grid, mobile-first), Vanilla JS (ES6+, Fetch API), PWA
+- **Инфраструктура и QA:** Docker, Docker Compose, Nginx 1.27, pytest
+
+## Планируемая структура репозитория
+
+```text
+task-planner/
+├── backend/       # REST API на FastAPI, модели ORM, схемы Pydantic, тесты pytest
+├── frontend/      # Адаптивный веб-интерфейс и обратный прокси Nginx
+├── docs/          # Статическая демо-сборка для GitHub Pages
+├── scripts/       # Скрипты резервного копирования PostgreSQL
+└── docker-compose.yml
+```
