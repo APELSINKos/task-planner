@@ -44,3 +44,54 @@ task-planner/
 ├── scripts/       # Скрипты резервного копирования PostgreSQL
 └── docker-compose.yml
 ```
+
+## Проектирование базы данных (3НФ)
+
+Схема приведена к третьей нормальной форме и включает 4 связанные таблицы:
+- `users` (`id`, `username`, `email`, `password_hash`, `created_at`) — учётные записи пользователей.
+- `categories` (`id`, `user_id`, `name`, `color`, `created_at`) — уникальные цветовые категории пользователя (`ON DELETE CASCADE` от `users`).
+- `tasks` (`id`, `user_id`, `category_id`, `title`, `description`, `priority`, `status`, `is_completed`, `due_date`, `created_at`, `updated_at`) — задачи (`ON DELETE SET NULL` от `categories`).
+- `subtasks` (`id`, `task_id`, `title`, `is_completed`, `created_at`) — вложенные шаги (`ON DELETE CASCADE` от `tasks`).
+
+```mermaid
+erDiagram
+    USERS ||--o{ CATEGORIES : "CASCADE"
+    USERS ||--o{ TASKS : "CASCADE"
+    CATEGORIES ||--o{ TASKS : "SET NULL"
+    TASKS ||--o{ SUBTASKS : "CASCADE"
+
+    USERS {
+        int id PK
+        varchar username UK
+        varchar email UK
+        varchar password_hash
+        timestamptz created_at
+    }
+    CATEGORIES {
+        int id PK
+        int user_id FK
+        varchar name
+        varchar color
+        timestamptz created_at
+    }
+    TASKS {
+        int id PK
+        int user_id FK
+        int category_id FK
+        varchar title
+        text description
+        varchar priority
+        varchar status
+        boolean is_completed
+        date due_date
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    SUBTASKS {
+        int id PK
+        int task_id FK
+        varchar title
+        boolean is_completed
+        timestamptz created_at
+    }
+```
