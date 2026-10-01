@@ -95,3 +95,19 @@ erDiagram
         timestamptz created_at
     }
 ```
+
+## Архитектура развёртывания
+
+Три контейнера объединяются во внутренней Docker-сети `app-net`:
+- `db` (`postgres:16-alpine`) — СУБД с томом `pgdata`, порт `5432` закрыт от внешнего мира.
+- `backend` (`python:3.12-slim`) — FastAPI на `:8000`, запуск от непривилегированного `appuser`.
+- `frontend` (`nginx:1.27-alpine`) — единая точка входа `:8080`, раздача статики и обратный прокси `/api/*` и `/docs`.
+
+```mermaid
+flowchart LR
+    Client["Браузер / PWA"] <-->|"HTTP :8080"| Nginx["Nginx 1.27<br/>Статика · Proxy"]
+    subgraph Net["Docker-сеть app-net"]
+        Nginx -->|"/api, /docs"| Backend["FastAPI :8000"]
+        Backend -->|"psycopg v3"| DB[("PostgreSQL 16 :5432")]
+    end
+```
