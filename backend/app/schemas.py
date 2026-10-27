@@ -1,9 +1,13 @@
 """Pydantic request and response schemas."""
 
-from datetime import datetime
+from datetime import date, datetime
 import re
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from typing import Literal
 
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
+
+PriorityType = Literal["low", "medium", "high"]
+StatusType = Literal["todo", "in_progress", "done"]
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -103,3 +107,102 @@ class CategoryOut(BaseModel):
     name: str
     color: str
     created_at: datetime
+
+
+class SubtaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        return _strip_non_empty(v, "Название подзадачи")
+
+
+class SubtaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    task_id: int
+    title: str
+    is_completed: bool
+    created_at: datetime
+
+
+class TaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    priority: PriorityType = "medium"
+    status: StatusType = "todo"
+    category_id: int | None = None
+    due_date: date | None = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        return _strip_non_empty(v, "Название задачи")
+
+    @field_validator("description")
+    @classmethod
+    def clean_description(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        cleaned = v.strip()
+        return cleaned if cleaned else None
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    priority: PriorityType | None = None
+    status: StatusType | None = None
+    is_completed: bool | None = None
+    category_id: int | None = None
+    due_date: date | None = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str | None) -> str | None:
+        return _strip_non_empty(v, "Название задачи") if v is not None else None
+
+    @field_validator("description")
+    @classmethod
+    def clean_description(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        cleaned = v.strip()
+        return cleaned if cleaned else None
+
+
+class TaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    category_id: int | None
+    title: str
+    description: str | None
+    priority: PriorityType
+    status: StatusType
+    is_completed: bool
+    due_date: date | None
+    created_at: datetime
+    updated_at: datetime
+    category: CategoryOut | None = None
+    subtasks: list[SubtaskOut] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def is_overdue(self) -> bool:
+        if self.is_completed or self.due_date is None:
+            return False
+        return self.due_date < date.today()
+
+
+class TaskStatsOut(BaseModel):
+    total: int
+    active: int
+    completed: int
+    overdue: int
+    high_priority: int
+    medium_priority: int
+    low_priority: int
