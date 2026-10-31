@@ -2,7 +2,7 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
@@ -11,7 +11,15 @@ from app.auth import create_access_token, get_current_user, hash_password, verif
 from app.config import settings
 from app.database import Base, engine, get_db
 from app.models import Category, User
-from app.schemas import TokenOut, UserLogin, UserOut, UserRegister
+from app.schemas import (
+    CategoryCreate,
+    CategoryOut,
+    CategoryUpdate,
+    TokenOut,
+    UserLogin,
+    UserOut,
+    UserRegister,
+)
 
 DEFAULT_CATEGORIES = [
     ("Учёба", "#2563eb"),
@@ -107,3 +115,90 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 @app.get("/api/auth/me", response_model=UserOut, tags=["Аутентификация"])
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@app.get("/api/categories", response_model=list[CategoryOut], tags=["Категории"])
+def list_categories(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(Category)
+        .where(Category.user_id == current_user.id)
+        .order_by(Category.name.asc())
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+@app.post("/api/categories", response_model=CategoryOut, status_code=status.HTTP_201_CREATED, tags=["Категории"])
+def create_category(
+    payload: CategoryCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user_categories = db.execute(
+        select(Category).where(Category.user_id == current_user.id)
+    ).scalars().all()
+    if any(c.name.casefold() == payload.name.casefold() for c in user_categories):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Категория с таким названием уже существует",
+        )
+
+    category = Category(user_id=current_user.id, name=payload.name, color=payload.color)
+    db.add(category)
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+@app.put("/api/categories/{category_id}", response_model=CategoryOut, tags=["Категории"])
+def update_category(
+    category_id: int,
+    payload: CategoryUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    category = db.execute(
+        select(Category).where(Category.id == category_id, Category.user_id == current_user.id)
+    ).scalar_one_or_none()
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
+
+    if payload.name is not None:
+        other_categories = db.execute(
+            select(Category).where(
+                Category.user_id == current_user.id,
+                Category.id != category_id,
+            )
+        ).scalars().all()
+        if any(c.name.casefold() == payload.name.casefold() for c in other_categories):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Категория с таким названием уже существует",
+            )
+        category.name = payload.name
+
+    if payload.color is not None:
+        category.color = payload.color
+
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+@app.delete("/api/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Категории"])
+def delete_category(
+    category_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    category = db.execute(
+        select(Category).where(Category.id == category_id, Category.user_id == current_user.id)
+    ).scalar_one_or_none()
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
+
+    db.delete(category)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
