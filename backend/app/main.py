@@ -1,20 +1,29 @@
 """FastAPI application entry point and REST API endpoints."""
 
 from contextlib import asynccontextmanager
+from datetime import date
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import func, or_, select, text
-from sqlalchemy.orm import Session
+from sqlalchemy import case, func, or_, select, text
+from sqlalchemy.orm import Session, joinedload
 
 from app.auth import create_access_token, get_current_user, hash_password, verify_password
 from app.config import settings
 from app.database import Base, engine, get_db
-from app.models import Category, User
+from app.models import Category, Subtask, Task, User
 from app.schemas import (
     CategoryCreate,
     CategoryOut,
     CategoryUpdate,
+    PriorityType,
+    StatusType,
+    SubtaskCreate,
+    SubtaskOut,
+    TaskCreate,
+    TaskOut,
+    TaskStatsOut,
+    TaskUpdate,
     TokenOut,
     UserLogin,
     UserOut,
@@ -49,6 +58,31 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+def _get_user_task_or_404(db: Session, user_id: int, task_id: int) -> Task:
+    stmt = (
+        select(Task)
+        .options(joinedload(Task.category), joinedload(Task.subtasks))
+        .where(Task.id == task_id, Task.user_id == user_id)
+    )
+    task = db.execute(stmt).unique().scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Задача не найдена")
+    return task
+
+
+def _validate_user_category(db: Session, user_id: int, category_id: int | None) -> None:
+    if category_id is None:
+        return
+    exists = db.execute(
+        select(Category.id).where(Category.id == category_id, Category.user_id == user_id)
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Указанная категория не найдена",
+        )
 
 
 @app.get("/api/health", tags=["Система"])
@@ -200,5 +234,164 @@ def delete_category(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Категория не найдена")
 
     db.delete(category)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/api/tasks/stats", response_model=TaskStatsOut, tags=["Задачи"])
+def get_task_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    tasks = list(db.execute(select(Task).where(Task.user_id == current_user.id)).scalars().all())
+    today = date.today()
+    completed = sum(1 for t in tasks if t.is_completed)
+    active = len(tasks) - completed
+    overdue = sum(1 for t in tasks if not t.is_completed and t.due_date is not None and t.due_date < today)
+    return TaskStatsOut(
+        total=len(tasks),
+        active=active,
+        completed=completed,
+        overdue=overdue,
+        high_priority=sum(1 for t in tasks if t.priority == "high"),
+        medium_priority=sum(1 for t in tasks if t.priority == "medium"),
+        low_priority=sum(1 for t in tasks if t.priority == "low"),
+    )
+
+
+@app.get("/api/tasks", response_model=list[TaskOut], tags=["Задачи"])
+def list_tasks(
+    completed: bool | None = Query(default=None),
+    status_filter: StatusType | None = Query(default=None, alias="status"),
+    priority: PriorityType | None = Query(default=None),
+    category_id: int | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
+    sort: str = Query(default="created_at", pattern="^(created_at|due_date|priority)$"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(Task)
+        .options(joinedload(Task.category), joinedload(Task.subtasks))
+        .where(Task.user_id == current_user.id)
+    )
+
+    if completed is not None:
+        stmt = stmt.where(Task.is_completed == completed)
+    if status_filter is not None:
+        stmt = stmt.where(Task.status == status_filter)
+    if priority is not None:
+        stmt = stmt.where(Task.priority == priority)
+    if category_id is not None:
+        stmt = stmt.where(Task.category_id == category_id)
+    if search:
+        term = search.strip()
+        if term:
+            pattern = f"%{term}%"
+            stmt = stmt.where(or_(Task.title.ilike(pattern), Task.description.ilike(pattern)))
+
+    if sort == "due_date":
+        stmt = stmt.order_by(Task.is_completed.asc(), Task.due_date.asc().nullslast(), Task.created_at.desc())
+    elif sort == "priority":
+        priority_rank = case(
+            (Task.priority == "high", 1),
+            (Task.priority == "medium", 2),
+            else_=3,
+        )
+        stmt = stmt.order_by(Task.is_completed.asc(), priority_rank.asc(), Task.created_at.desc())
+    else:
+        stmt = stmt.order_by(Task.is_completed.asc(), Task.created_at.desc())
+
+    return list(db.execute(stmt).unique().scalars().all())
+
+
+@app.get("/api/tasks/{task_id}", response_model=TaskOut, tags=["Задачи"])
+def get_task(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _get_user_task_or_404(db, current_user.id, task_id)
+
+
+@app.post("/api/tasks", response_model=TaskOut, status_code=status.HTTP_201_CREATED, tags=["Задачи"])
+def create_task(
+    payload: TaskCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _validate_user_category(db, current_user.id, payload.category_id)
+    is_completed = payload.status == "done"
+
+    task = Task(
+        user_id=current_user.id,
+        category_id=payload.category_id,
+        title=payload.title,
+        description=payload.description,
+        priority=payload.priority,
+        status=payload.status,
+        is_completed=is_completed,
+        due_date=payload.due_date,
+    )
+    db.add(task)
+    db.commit()
+    return _get_user_task_or_404(db, current_user.id, task.id)
+
+
+@app.put("/api/tasks/{task_id}", response_model=TaskOut, tags=["Задачи"])
+def update_task(
+    task_id: int,
+    payload: TaskUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = _get_user_task_or_404(db, current_user.id, task_id)
+    fields = payload.model_fields_set
+
+    if "category_id" in fields:
+        _validate_user_category(db, current_user.id, payload.category_id)
+        task.category_id = payload.category_id
+    if "title" in fields and payload.title is not None:
+        task.title = payload.title
+    if "description" in fields:
+        task.description = payload.description
+    if "priority" in fields and payload.priority is not None:
+        task.priority = payload.priority
+    if "due_date" in fields:
+        task.due_date = payload.due_date
+
+    # Keep status and is_completed synchronized regardless of which field changed
+    if "status" in fields and payload.status is not None:
+        task.status = payload.status
+        task.is_completed = payload.status == "done"
+    elif "is_completed" in fields and payload.is_completed is not None:
+        task.is_completed = payload.is_completed
+        task.status = "done" if payload.is_completed else ("todo" if task.status == "done" else task.status)
+
+    db.commit()
+    return _get_user_task_or_404(db, current_user.id, task.id)
+
+
+@app.patch("/api/tasks/{task_id}/toggle", response_model=TaskOut, tags=["Задачи"])
+def toggle_task(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = _get_user_task_or_404(db, current_user.id, task_id)
+    task.is_completed = not task.is_completed
+    task.status = "done" if task.is_completed else "todo"
+    db.commit()
+    return _get_user_task_or_404(db, current_user.id, task.id)
+
+
+@app.delete("/api/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Задачи"])
+def delete_task(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = _get_user_task_or_404(db, current_user.id, task_id)
+    db.delete(task)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
