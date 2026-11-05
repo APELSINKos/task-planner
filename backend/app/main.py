@@ -395,3 +395,59 @@ def delete_task(
     db.delete(task)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/api/tasks/{task_id}/subtasks", response_model=SubtaskOut, status_code=status.HTTP_201_CREATED, tags=["Подзадачи"])
+def create_subtask(
+    task_id: int,
+    payload: SubtaskCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = _get_user_task_or_404(db, current_user.id, task_id)
+    subtask = Subtask(task_id=task.id, title=payload.title)
+    db.add(subtask)
+    db.commit()
+    db.refresh(subtask)
+    return subtask
+
+
+@app.patch("/api/subtasks/{subtask_id}/toggle", response_model=SubtaskOut, tags=["Подзадачи"])
+def toggle_subtask(
+    subtask_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(Subtask)
+        .join(Task, Subtask.task_id == Task.id)
+        .where(Subtask.id == subtask_id, Task.user_id == current_user.id)
+    )
+    subtask = db.execute(stmt).scalar_one_or_none()
+    if subtask is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Подзадача не найдена")
+
+    subtask.is_completed = not subtask.is_completed
+    db.commit()
+    db.refresh(subtask)
+    return subtask
+
+
+@app.delete("/api/subtasks/{subtask_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Подзадачи"])
+def delete_subtask(
+    subtask_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(Subtask)
+        .join(Task, Subtask.task_id == Task.id)
+        .where(Subtask.id == subtask_id, Task.user_id == current_user.id)
+    )
+    subtask = db.execute(stmt).scalar_one_or_none()
+    if subtask is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Подзадача не найдена")
+
+    db.delete(subtask)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
