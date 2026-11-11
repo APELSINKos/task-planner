@@ -36,6 +36,13 @@ class UserRegister(BaseModel):
     def normalize_email(cls, v: EmailStr) -> str:
         return str(v).strip().lower()
 
+    @field_validator("password")
+    @classmethod
+    def validate_password_bytes(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Пароль превышает допустимую длину (72 байта в UTF-8)")
+        return v
+
 
 class UserLogin(BaseModel):
     login: str = Field(min_length=3, max_length=120)

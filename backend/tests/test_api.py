@@ -300,3 +300,44 @@ def test_user_data_isolation_and_validation(client: TestClient):
     # Blank title rejected
     blank = client.post("/api/tasks", headers=h1, json={"title": "   "})
     assert blank.status_code == 422
+
+
+def test_edge_cases_password_bytes_search_escaping_and_status_conflict(client: TestClient):
+    # 40 Cyrillic characters = 80 UTF-8 bytes (> bcrypt 72-byte limit) -> clean 422
+    long_cyrillic = "пароль" * 7  # 42 Cyrillic chars = 84 bytes
+    resp = client.post(
+        "/api/auth/register",
+        json={"username": "cyr_user", "email": "cyr@example.com", "password": long_cyrillic},
+    )
+    assert resp.status_code == 422
+
+    headers = _register_and_headers(client, "edge_user", "edge@example.com")
+    client.post("/api/tasks", headers=headers, json={"title": "Готовность 100%"})
+    client.post("/api/tasks", headers=headers, json={"title": "Готовность 1000"})
+
+    # Searching "100%" must match literally, not treat "%" as SQL wildcard
+    matched = client.get("/api/tasks?search=100%25", headers=headers)
+    assert matched.status_code == 200
+    assert [t["title"] for t in matched.json()] == ["Готовность 100%"]
+
+    # Contradictory status and is_completed must fail with 422
+    task_id = matched.json()[0]["id"]
+    conflict = client.put(
+        f"/api/tasks/{task_id}",
+        headers=headers,
+        json={"status": "done", "is_completed": False},
+    )
+    assert conflict.status_code == 422
+
+    # Expired JWT token rejected with 401
+    from datetime import datetime, timedelta, timezone
+    import jwt
+    from app.config import settings
+
+    expired = jwt.encode(
+        {"sub": "1", "exp": int((datetime.now(timezone.utc) - timedelta(minutes=5)).timestamp())},
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    assert client.get("/api/auth/me", headers={"Authorization": f"Bearer {expired}"}).status_code == 401
+
