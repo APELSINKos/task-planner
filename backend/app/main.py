@@ -38,6 +38,15 @@ DEFAULT_CATEGORIES = [
 ]
 
 
+OPENAPI_TAGS = [
+    {"name": "Система", "description": "Проверка состояния API и подключения к PostgreSQL."},
+    {"name": "Аутентификация", "description": "Регистрация, вход по логину или email и профиль текущего пользователя (JWT HS256)."},
+    {"name": "Категории", "description": "Управление цветовыми категориями пользователя (при удалении у задач срабатывает ON DELETE SET NULL)."},
+    {"name": "Задачи", "description": "CRUD задач, переключение статуса, поиск, фильтрация, сортировка и сводная статистика."},
+    {"name": "Подзадачи", "description": "Декомпозиция задач на шаги (при удалении задачи срабатывает ON DELETE CASCADE)."},
+]
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
@@ -48,7 +57,14 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="REST API для веб-приложения «Планировщик задач»",
+    summary="Клиент-серверный планировщик задач с JWT-аутентификацией и PostgreSQL 16",
+    description=(
+        "REST API для веб-приложения «Планировщик задач»: регистрация и вход по Bearer JWT, "
+        "персональные категории с цветами, задачи с приоритетами и сроками, подзадачи, "
+        "поиск/фильтрация/сортировка и сводная статистика."
+    ),
+    openapi_tags=OPENAPI_TAGS,
+    license_info={"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
     lifespan=lifespan,
 )
 
@@ -86,13 +102,19 @@ def _validate_user_category(db: Session, user_id: int, category_id: int | None) 
         )
 
 
-@app.get("/api/health", tags=["Система"])
+@app.get("/api/health", tags=["Система"], summary="Проверка состояния API и БД")
 def healthcheck(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))
     return {"status": "ok", "database": "connected"}
 
 
-@app.post("/api/auth/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED, tags=["Аутентификация"])
+@app.post(
+    "/api/auth/register",
+    response_model=TokenOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Аутентификация"],
+    summary="Регистрация пользователя и выдача JWT",
+)
 def register(payload: UserRegister, db: Session = Depends(get_db)):
     duplicate = db.execute(
         select(User).where(
@@ -133,7 +155,12 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     return TokenOut(access_token=token, user=UserOut.model_validate(user))
 
 
-@app.post("/api/auth/login", response_model=TokenOut, tags=["Аутентификация"])
+@app.post(
+    "/api/auth/login",
+    response_model=TokenOut,
+    tags=["Аутентификация"],
+    summary="Вход по логину или email",
+)
 def login(payload: UserLogin, db: Session = Depends(get_db)):
     user = db.execute(
         select(User).where(
@@ -154,12 +181,22 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     return TokenOut(access_token=token, user=UserOut.model_validate(user))
 
 
-@app.get("/api/auth/me", response_model=UserOut, tags=["Аутентификация"])
+@app.get(
+    "/api/auth/me",
+    response_model=UserOut,
+    tags=["Аутентификация"],
+    summary="Профиль текущего пользователя",
+)
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@app.get("/api/categories", response_model=list[CategoryOut], tags=["Категории"])
+@app.get(
+    "/api/categories",
+    response_model=list[CategoryOut],
+    tags=["Категории"],
+    summary="Список категорий пользователя",
+)
 def list_categories(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -172,7 +209,13 @@ def list_categories(
     return list(db.execute(stmt).scalars().all())
 
 
-@app.post("/api/categories", response_model=CategoryOut, status_code=status.HTTP_201_CREATED, tags=["Категории"])
+@app.post(
+    "/api/categories",
+    response_model=CategoryOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Категории"],
+    summary="Создание новой категории",
+)
 def create_category(
     payload: CategoryCreate,
     current_user: User = Depends(get_current_user),
@@ -201,7 +244,12 @@ def create_category(
     return category
 
 
-@app.put("/api/categories/{category_id}", response_model=CategoryOut, tags=["Категории"])
+@app.put(
+    "/api/categories/{category_id}",
+    response_model=CategoryOut,
+    tags=["Категории"],
+    summary="Обновление категории",
+)
 def update_category(
     category_id: int,
     payload: CategoryUpdate,
@@ -236,7 +284,12 @@ def update_category(
     return category
 
 
-@app.delete("/api/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Категории"])
+@app.delete(
+    "/api/categories/{category_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Категории"],
+    summary="Удаление категории",
+)
 def delete_category(
     category_id: int,
     current_user: User = Depends(get_current_user),
@@ -253,7 +306,12 @@ def delete_category(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@app.get("/api/tasks/stats", response_model=TaskStatsOut, tags=["Задачи"])
+@app.get(
+    "/api/tasks/stats",
+    response_model=TaskStatsOut,
+    tags=["Задачи"],
+    summary="Сводная статистика по задачам",
+)
 def get_task_stats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -274,7 +332,12 @@ def get_task_stats(
     )
 
 
-@app.get("/api/tasks", response_model=list[TaskOut], tags=["Задачи"])
+@app.get(
+    "/api/tasks",
+    response_model=list[TaskOut],
+    tags=["Задачи"],
+    summary="Список задач с фильтрами и сортировкой",
+)
 def list_tasks(
     completed: bool | None = Query(default=None),
     status_filter: StatusType | None = Query(default=None, alias="status"),
@@ -326,7 +389,12 @@ def list_tasks(
     return list(db.execute(stmt).unique().scalars().all())
 
 
-@app.get("/api/tasks/{task_id}", response_model=TaskOut, tags=["Задачи"])
+@app.get(
+    "/api/tasks/{task_id}",
+    response_model=TaskOut,
+    tags=["Задачи"],
+    summary="Детальная карточка задачи",
+)
 def get_task(
     task_id: int,
     current_user: User = Depends(get_current_user),
@@ -335,7 +403,13 @@ def get_task(
     return _get_user_task_or_404(db, current_user.id, task_id)
 
 
-@app.post("/api/tasks", response_model=TaskOut, status_code=status.HTTP_201_CREATED, tags=["Задачи"])
+@app.post(
+    "/api/tasks",
+    response_model=TaskOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Задачи"],
+    summary="Создание новой задачи",
+)
 def create_task(
     payload: TaskCreate,
     current_user: User = Depends(get_current_user),
@@ -359,7 +433,12 @@ def create_task(
     return _get_user_task_or_404(db, current_user.id, task.id)
 
 
-@app.put("/api/tasks/{task_id}", response_model=TaskOut, tags=["Задачи"])
+@app.put(
+    "/api/tasks/{task_id}",
+    response_model=TaskOut,
+    tags=["Задачи"],
+    summary="Обновление задачи",
+)
 def update_task(
     task_id: int,
     payload: TaskUpdate,
@@ -401,7 +480,12 @@ def update_task(
     return _get_user_task_or_404(db, current_user.id, task.id)
 
 
-@app.patch("/api/tasks/{task_id}/toggle", response_model=TaskOut, tags=["Задачи"])
+@app.patch(
+    "/api/tasks/{task_id}/toggle",
+    response_model=TaskOut,
+    tags=["Задачи"],
+    summary="Переключение статуса выполнения задачи",
+)
 def toggle_task(
     task_id: int,
     current_user: User = Depends(get_current_user),
@@ -414,7 +498,12 @@ def toggle_task(
     return _get_user_task_or_404(db, current_user.id, task.id)
 
 
-@app.delete("/api/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Задачи"])
+@app.delete(
+    "/api/tasks/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Задачи"],
+    summary="Удаление задачи и её подзадач",
+)
 def delete_task(
     task_id: int,
     current_user: User = Depends(get_current_user),
@@ -426,7 +515,13 @@ def delete_task(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@app.post("/api/tasks/{task_id}/subtasks", response_model=SubtaskOut, status_code=status.HTTP_201_CREATED, tags=["Подзадачи"])
+@app.post(
+    "/api/tasks/{task_id}/subtasks",
+    response_model=SubtaskOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Подзадачи"],
+    summary="Добавление подзадачи к задаче",
+)
 def create_subtask(
     task_id: int,
     payload: SubtaskCreate,
@@ -441,7 +536,12 @@ def create_subtask(
     return subtask
 
 
-@app.patch("/api/subtasks/{subtask_id}/toggle", response_model=SubtaskOut, tags=["Подзадачи"])
+@app.patch(
+    "/api/subtasks/{subtask_id}/toggle",
+    response_model=SubtaskOut,
+    tags=["Подзадачи"],
+    summary="Переключение выполнения подзадачи",
+)
 def toggle_subtask(
     subtask_id: int,
     current_user: User = Depends(get_current_user),
@@ -462,7 +562,12 @@ def toggle_subtask(
     return subtask
 
 
-@app.delete("/api/subtasks/{subtask_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Подзадачи"])
+@app.delete(
+    "/api/subtasks/{subtask_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Подзадачи"],
+    summary="Удаление подзадачи",
+)
 def delete_subtask(
     subtask_id: int,
     current_user: User = Depends(get_current_user),
