@@ -149,3 +149,31 @@ flowchart LR
 | `v1.0.0` (QA и релиз) | 7 декабря – 20 декабря | Сквозное тестирование, Code-Review, документация и защита проекта |
 
 Журнал изменений ведётся в [`CHANGELOG.md`](CHANGELOG.md).
+
+## Демо-версия
+
+Статический предпросмотр интерфейса опубликован на GitHub Pages: https://apelsinkos.github.io/task-planner/
+
+## Запуск через Docker Compose
+
+Требования: Docker Engine и Docker Compose. Конфигурация задаётся через `.env` по шаблону `.env.example`.
+
+```bash
+git clone https://github.com/APELSINKos/task-planner.git
+cd task-planner
+cp .env.example .env
+docker compose up --build -d
+docker compose ps
+```
+
+После запуска:
+- Веб-приложение: `http://localhost:8080`
+- Документация API (Swagger UI): `http://localhost:8080/docs`
+- Проверка работоспособности: `http://localhost:8080/api/health`
+
+## Тестирование и резервное копирование
+
+```bash
+docker compose exec backend pytest -v
+./scripts/backup_db.sh
+```
