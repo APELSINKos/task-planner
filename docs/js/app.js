@@ -25,6 +25,8 @@ const state = {
   activeDetailTaskId: null,
   searchTimer: null,
   toastTimer: null,
+  tasksRequestSeq: 0,
+  lastFocusedElement: null,
 };
 
 const el = {
@@ -160,6 +162,7 @@ function showAppView() {
 function handleApiError(err, fallbackMessage = "Произошла ошибка") {
   if (err && err.status === 401) {
     api.setToken(null);
+    resetFilters();
     closeModal(el.taskModal);
     closeModal(el.detailModal);
     showAuthView("Сессия истекла. Пожалуйста, войдите снова.");
@@ -169,13 +172,36 @@ function handleApiError(err, fallbackMessage = "Произошла ошибка"
 }
 
 function openModal(modalElement) {
+  if (document.activeElement instanceof HTMLElement) {
+    state.lastFocusedElement = document.activeElement;
+  }
   modalElement.hidden = false;
   document.body.style.overflow = "hidden";
 }
 
 function closeModal(modalElement) {
+  if (modalElement.hidden) return;
   modalElement.hidden = true;
-  document.body.style.overflow = "";
+  if (el.taskModal.hidden && el.detailModal.hidden) {
+    document.body.style.overflow = "";
+    if (state.lastFocusedElement && document.contains(state.lastFocusedElement)) {
+      state.lastFocusedElement.focus();
+      state.lastFocusedElement = null;
+    }
+  }
+}
+
+function resetFilters() {
+  clearTimeout(state.searchTimer);
+  state.selectedCategoryId = null;
+  state.statusFilter = "all";
+  state.priorityFilter = "";
+  state.search = "";
+  state.sort = "created_at";
+  el.filterSearch.value = "";
+  el.filterStatus.value = "all";
+  el.filterPriority.value = "";
+  el.filterSort.value = "created_at";
 }
 
 function renderStats() {
@@ -293,7 +319,7 @@ function renderTasks() {
     checkbox.className = "task-card__checkbox";
     checkbox.checked = task.is_completed;
     checkbox.setAttribute("aria-label", `Отметить задачу «${task.title}» выполненной`);
-    checkbox.addEventListener("change", () => handleToggleTask(task.id));
+    checkbox.addEventListener("change", () => handleToggleTask(task.id, checkbox));
     checkWrap.appendChild(checkbox);
 
     const content = document.createElement("div");
@@ -390,6 +416,7 @@ async function loadTasks() {
   el.tasksLoading.hidden = false;
   el.tasksEmpty.hidden = true;
 
+  const requestSeq = ++state.tasksRequestSeq;
   const params = {
     sort: state.sort,
     search: state.search,
@@ -401,12 +428,18 @@ async function loadTasks() {
 
   try {
     const [tasks, stats] = await Promise.all([api.getTasks(params), api.getStats()]);
+    if (requestSeq !== state.tasksRequestSeq) {
+      return;
+    }
     state.tasks = tasks;
     state.stats = stats;
     el.tasksLoading.hidden = true;
     renderStats();
     renderTasks();
   } catch (err) {
+    if (requestSeq !== state.tasksRequestSeq) {
+      return;
+    }
     el.tasksLoading.hidden = true;
     handleApiError(err, "Не удалось загрузить задачи");
   }
@@ -485,7 +518,7 @@ async function handleSaveTask(event) {
   }
 }
 
-async function handleToggleTask(taskId) {
+async function handleToggleTask(taskId, checkboxEl = null) {
   try {
     await api.toggleTask(taskId);
     await loadTasks();
@@ -493,6 +526,9 @@ async function handleToggleTask(taskId) {
       await renderDetailTask(taskId);
     }
   } catch (err) {
+    if (checkboxEl) {
+      checkboxEl.checked = !checkboxEl.checked;
+    }
     handleApiError(err, "Не удалось обновить статус задачи");
   }
 }
@@ -571,6 +607,7 @@ async function renderDetailTask(taskId) {
           await renderDetailTask(task.id);
           await loadTasks();
         } catch (err) {
+          cb.checked = !cb.checked;
           handleApiError(err, "Не удалось обновить подзадачу");
         }
       });
@@ -606,6 +643,8 @@ async function openDetailModal(taskId) {
   try {
     await renderDetailTask(taskId);
     openModal(el.detailModal);
+    const closeBtn = el.detailModal.querySelector("[data-close-modal='detail-modal'].icon-btn");
+    if (closeBtn) closeBtn.focus();
   } catch (err) {
     handleApiError(err, "Не удалось загрузить детали задачи");
   }
@@ -659,11 +698,19 @@ function bindEvents() {
 
   el.btnLogout.addEventListener("click", () => {
     api.setToken(null);
-    state.selectedCategoryId = null;
+    resetFilters();
+    el.loginForm.reset();
+    el.registerForm.reset();
     showAuthView();
   });
 
-  el.btnRetry.addEventListener("click", () => loadWorkspace());
+  el.btnRetry.addEventListener("click", () => {
+    if (!state.user && api.getToken()) {
+      initSession();
+    } else {
+      loadWorkspace();
+    }
+  });
   el.btnOpenCreate.addEventListener("click", () => openTaskModal());
   el.btnOpenCreateMobile.addEventListener("click", () => openTaskModal());
   el.btnEmptyCreate.addEventListener("click", () => openTaskModal());
@@ -737,6 +784,33 @@ function bindEvents() {
   });
 }
 
+async function initSession() {
+  const token = api.getToken();
+  if (!token) {
+    showAuthView();
+    return;
+  }
+
+  hideGlobalError();
+  try {
+    state.user = await api.getMe();
+    showAppView();
+    await loadWorkspace();
+  } catch (err) {
+    if (err && err.status === 401) {
+      api.setToken(null);
+      resetFilters();
+      showAuthView("Сессия истекла. Пожалуйста, войдите снова.");
+    } else {
+      el.authView.hidden = true;
+      el.appView.hidden = false;
+      el.headerActions.hidden = false;
+      el.tasksLoading.hidden = true;
+      showGlobalError(err?.message || "Сервер временно недоступен. Попробуйте повторить запрос.");
+    }
+  }
+}
+
 async function initApp() {
   bindEvents();
 
@@ -744,20 +818,7 @@ async function initApp() {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   }
 
-  const token = api.getToken();
-  if (!token) {
-    showAuthView();
-    return;
-  }
-
-  try {
-    state.user = await api.getMe();
-    showAppView();
-    await loadWorkspace();
-  } catch (_err) {
-    api.setToken(null);
-    showAuthView();
-  }
+  await initSession();
 }
 
 initApp();

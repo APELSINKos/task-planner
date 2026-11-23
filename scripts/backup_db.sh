@@ -1,6 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ -f .env ]; then
+  while IFS='=' read -r key val; do
+    case "$key" in
+      POSTGRES_USER|POSTGRES_DB)
+        val="${val%$'\r'}"
+        val="${val#\"}"; val="${val%\"}"
+        val="${val#\'}"; val="${val%\'}"
+        if [ -z "${!key:-}" ]; then
+          export "$key=$val"
+        fi
+        ;;
+    esac
+  done < .env
+fi
+
 mkdir -p backups
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 DB_USER="${POSTGRES_USER:-taskuser}"

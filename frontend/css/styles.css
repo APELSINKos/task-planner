@@ -8,14 +8,14 @@
   --color-border-light: #e2e8f0;
   --color-text: #0f172a;
   --color-text-muted: #475569;
-  --color-primary: #1d4ed8;
-  --color-primary-hover: #1e40af;
+  --color-primary: #1e40af;
+  --color-primary-hover: #1e3a8a;
   --color-primary-soft: #eff6ff;
-  --color-success: #047857;
+  --color-success: #065f46;
   --color-success-bg: #ecfdf5;
   --color-warning: #92400e;
   --color-warning-bg: #fffbeb;
-  --color-danger: #b91c1c;
+  --color-danger: #991b1b;
   --color-danger-bg: #fef2f2;
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
@@ -520,6 +520,8 @@ body.page {
 
 .category-form__color {
   width: 48px;
+  min-width: 48px;
+  flex-shrink: 0;
   min-height: 44px;
   padding: 0.25rem;
   border: 1px solid var(--color-border);
@@ -854,6 +856,9 @@ body.page {
 }
 
 .footer__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--color-primary);
   font-weight: 600;
   text-decoration: underline;
