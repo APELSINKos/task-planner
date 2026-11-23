@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    name: Backend Tests (SQLite & PostgreSQL 16)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: taskplanner_test
+          POSTGRES_USER: taskuser
+          POSTGRES_PASSWORD: taskpass_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U taskuser -d taskplanner_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Compile-check Python sources
+        run: python -m compileall -q backend/app backend/tests
+
+      - name: Run pytest on SQLite (in-memory)
+        working-directory: backend
+        run: pytest -v
+
+      - name: Run pytest on PostgreSQL 16
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://taskuser:taskpass_test@localhost:5432/taskplanner_test
+        run: pytest -v
+
+  repo-checks:
+    name: Docker Compose & GitHub Pages Sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+
+      - name: Verify frontend and docs static assets match
+        run: |
+          for file in css/styles.css js/app.js sw.js manifest.webmanifest icons/favicon.svg icons/icon-192.png icons/icon-512.png; do
+            cmp -s "frontend/$file" "docs/$file" || { echo "Mismatch: $file"; exit 1; }
+          done
