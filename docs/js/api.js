@@ -1,7 +1,7 @@
 /* Local browser storage adapter for GitHub Pages static preview.
  * Full-stack version with FastAPI + PostgreSQL runs via Docker Compose (frontend/js/api.js). */
 
-const DEMO_STORE_KEY = "task_planner_ghpages_demo_v1";
+const DEMO_STORE_KEY = "task_planner_ghpages_demo_v2";
 const DEMO_TOKEN_KEY = "task_planner_ghpages_token";
 
 class ApiError extends Error {
@@ -12,10 +12,17 @@ class ApiError extends Error {
   }
 }
 
-function _todayOffset(days) {
+function _localIsoDate(days = 0) {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function _todayOffset(days) {
+  return _localIsoDate(days);
 }
 
 function _loadStore() {
@@ -27,20 +34,38 @@ function _loadStore() {
   }
   const nowIso = new Date().toISOString();
   const initial = {
-    nextId: 10,
+    nextId: 20,
     user: { id: 1, username: "demo_user", email: "demo@example.com", created_at: nowIso },
     categories: [
-      { id: 1, name: "Учёба", color: "#2563eb", created_at: nowIso },
-      { id: 2, name: "Работа", color: "#0f766e", created_at: nowIso },
-      { id: 3, name: "Личное", color: "#b45309", created_at: nowIso },
+      { id: 1, name: "Практика", color: "#7c3aed", created_at: nowIso },
+      { id: 2, name: "Работа", color: "#0b6a55", created_at: nowIso },
+      { id: 3, name: "Учёба", color: "#2563eb", created_at: nowIso },
+      { id: 4, name: "Личное", color: "#b45309", created_at: nowIso },
     ],
     tasks: [
       {
         id: 1,
         user_id: 1,
+        category_id: 2,
+        title: "Провести проверку отказоустойчивости REST API и Docker Compose",
+        description: "Проверить автоматический перезапуск сервисов, healthcheck PostgreSQL и резервное копирование pg_dump.",
+        priority: "high",
+        status: "todo",
+        is_completed: false,
+        due_date: _todayOffset(-1),
+        created_at: nowIso,
+        updated_at: nowIso,
+        subtasks: [
+          { id: 1, task_id: 1, title: "Проверить восстановление после перезапуска backend", is_completed: true, created_at: nowIso },
+          { id: 2, task_id: 1, title: "Сделать тестовый дамп и восстановить его в psql", is_completed: false, created_at: nowIso },
+        ],
+      },
+      {
+        id: 2,
+        user_id: 1,
         category_id: 1,
-        title: "Проверить адаптивную вёрстку на мобильных экранах",
-        description: "Проверить контрастность WCAG 2.0, видимый фокус и размеры кнопок >= 44px.",
+        title: "Подготовить отчёт и презентацию к защите практики",
+        description: "Собрать единый отчёт по методическим указаниям, приложить ER-диаграмму и скриншоты интерфейса.",
         priority: "high",
         status: "in_progress",
         is_completed: false,
@@ -48,34 +73,66 @@ function _loadStore() {
         created_at: nowIso,
         updated_at: nowIso,
         subtasks: [
-          { id: 1, task_id: 1, title: "Проверить отображение при 390px", is_completed: true, created_at: nowIso },
-          { id: 2, task_id: 1, title: "Проверить клавиатурную навигацию Tab", is_completed: false, created_at: nowIso },
+          { id: 3, task_id: 2, title: "Оформить разделы 1–4 по ГОСТ и методичке", is_completed: true, created_at: nowIso },
+          { id: 4, task_id: 2, title: "Проверить список литературы по ГОСТ Р 7.0.100-2018", is_completed: true, created_at: nowIso },
+          { id: 5, task_id: 2, title: "Подготовить 10 слайдов презентации и тезисы защиты", is_completed: false, created_at: nowIso },
         ],
-      },
-      {
-        id: 2,
-        user_id: 1,
-        category_id: 2,
-        title: "Подготовить docker-compose.yml для сборки проекта",
-        description: "Объединить PostgreSQL, FastAPI и Nginx в единый стек с healthcheck.",
-        priority: "high",
-        status: "done",
-        is_completed: true,
-        due_date: _todayOffset(-1),
-        created_at: nowIso,
-        updated_at: nowIso,
-        subtasks: [],
       },
       {
         id: 3,
         user_id: 1,
         category_id: 3,
-        title: "Составить план задач на следующую неделю",
-        description: "Расставить приоритеты по методу MoSCoW и уточнить сроки.",
+        title: "Проверить доступность интерфейса по WCAG 2.0",
+        description: "Протестировать навигацию с клавиатуры (Tab/Escape), видимый фокус, контрастность и размеры кнопок >= 44px.",
+        priority: "medium",
+        status: "in_progress",
+        is_completed: false,
+        due_date: _todayOffset(3),
+        created_at: nowIso,
+        updated_at: nowIso,
+        subtasks: [
+          { id: 6, task_id: 3, title: "Проверить светлую и тёмную тему", is_completed: true, created_at: nowIso },
+          { id: 7, task_id: 3, title: "Проверить отображение при 390px", is_completed: false, created_at: nowIso },
+        ],
+      },
+      {
+        id: 4,
+        user_id: 1,
+        category_id: 4,
+        title: "Составить план подготовки к зимней сессии",
+        description: "Расставить приоритеты по предметам и распределить повторение по дням недели.",
         priority: "low",
         status: "todo",
         is_completed: false,
-        due_date: _todayOffset(5),
+        due_date: _todayOffset(6),
+        created_at: nowIso,
+        updated_at: nowIso,
+        subtasks: [],
+      },
+      {
+        id: 5,
+        user_id: 1,
+        category_id: 2,
+        title: "Настроить docker-compose.yml с healthcheck",
+        description: "Объединить PostgreSQL 16, FastAPI и Nginx в единый стек с изолированной сетью.",
+        priority: "high",
+        status: "done",
+        is_completed: true,
+        due_date: _todayOffset(-2),
+        created_at: nowIso,
+        updated_at: nowIso,
+        subtasks: [],
+      },
+      {
+        id: 6,
+        user_id: 1,
+        category_id: 3,
+        title: "Покрыть серверный REST API автотестами pytest",
+        description: "Проверить регистрацию, JWT, CRUD, фильтрацию и изоляцию данных пользователей.",
+        priority: "medium",
+        status: "done",
+        is_completed: true,
+        due_date: _todayOffset(-3),
         created_at: nowIso,
         updated_at: nowIso,
         subtasks: [],
@@ -91,7 +148,7 @@ function _saveStore(store) {
 }
 
 function _hydrateTask(store, task) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = _localIsoDate(0);
   const category = store.categories.find((c) => c.id === task.category_id) || null;
   return {
     ...task,
@@ -100,12 +157,9 @@ function _hydrateTask(store, task) {
   };
 }
 
-// Auto-authenticate demo preview on GitHub Pages so visitors see the app immediately
-if (!localStorage.getItem(DEMO_TOKEN_KEY)) {
-  localStorage.setItem(DEMO_TOKEN_KEY, "gh-pages-demo-token");
-}
-
 const api = {
+  isDemoMode: true,
+
   getToken() {
     return localStorage.getItem(DEMO_TOKEN_KEY);
   },
