@@ -4,8 +4,8 @@
   "description": "Веб-приложение для планирования личных и учебных задач",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#1e40af",
+  "background_color": "#f5f7f6",
+  "theme_color": "#0b6a55",
   "lang": "ru",
   "icons": [
     {
