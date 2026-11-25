@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from datetime import date
+import logging
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,8 +48,20 @@ OPENAPI_TAGS = [
 ]
 
 
+logger = logging.getLogger(__name__)
+
+DEFAULT_JWT_SECRETS = {
+    "dev-secret-change-in-production-32bytes",
+    "change_me_jwt_secret_key_at_least_32_chars",
+}
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    if settings.jwt_secret in DEFAULT_JWT_SECRETS:
+        logger.warning(
+            "Using default development JWT_SECRET; set a strong unique JWT_SECRET in production."
+        )
     Base.metadata.create_all(bind=engine)
     yield
     engine.dispose()
@@ -122,14 +135,16 @@ def healthcheck(db: Session = Depends(get_db)):
     summary="Регистрация пользователя и выдача JWT",
 )
 def register(payload: UserRegister, db: Session = Depends(get_db)):
+    email_lower = payload.email.lower()
+    username_lower = payload.username.lower()
     duplicate = db.execute(
-        select(User).where(
+        select(User.id).where(
             or_(
-                func.lower(User.email) == payload.email.lower(),
-                func.lower(User.username) == payload.username.lower(),
+                func.lower(User.email).in_([email_lower, username_lower]),
+                func.lower(User.username).in_([username_lower, email_lower]),
             )
         )
-    ).scalar_one_or_none()
+    ).first()
     if duplicate is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -141,13 +156,13 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
         email=payload.email,
         password_hash=hash_password(payload.password),
     )
-    db.add(user)
-    db.flush()
-
-    for cat_name, cat_color in DEFAULT_CATEGORIES:
-        db.add(Category(user_id=user.id, name=cat_name, color=cat_color))
-
     try:
+        db.add(user)
+        db.flush()
+
+        for cat_name, cat_color in DEFAULT_CATEGORIES:
+            db.add(Category(user_id=user.id, name=cat_name, color=cat_color))
+
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -168,16 +183,20 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     summary="Вход по логину или email",
 )
 def login(payload: UserLogin, db: Session = Depends(get_db)):
-    user = db.execute(
+    candidates = db.execute(
         select(User).where(
             or_(
                 func.lower(User.email) == payload.login,
                 func.lower(User.username) == payload.login,
             )
         )
-    ).scalar_one_or_none()
+    ).scalars().all()
+    user = next(
+        (candidate for candidate in candidates if verify_password(payload.password, candidate.password_hash)),
+        None,
+    )
 
-    if user is None or not verify_password(payload.password, user.password_hash):
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный логин или пароль",

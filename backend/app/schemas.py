@@ -20,7 +20,7 @@ def _strip_non_empty(value: str, field_label: str) -> str:
 
 class UserRegister(BaseModel):
     username: str = Field(min_length=3, max_length=50)
-    email: EmailStr
+    email: EmailStr = Field(max_length=120)
     password: str = Field(min_length=6, max_length=72)
 
     @field_validator("username")
@@ -34,7 +34,10 @@ class UserRegister(BaseModel):
     @field_validator("email")
     @classmethod
     def normalize_email(cls, v: EmailStr) -> str:
-        return str(v).strip().lower()
+        cleaned = str(v).strip().lower()
+        if len(cleaned) > 120:
+            raise ValueError("Электронная почта не должна превышать 120 символов")
+        return cleaned
 
     @field_validator("password")
     @classmethod

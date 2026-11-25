@@ -5,16 +5,19 @@ import os
 
 from fastapi.testclient import TestClient
 import pytest
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.auth import hash_password
 from app.database import Base, get_db
+import app.main as app_main
 from app.main import app
+from app.models import Subtask, User
 
 
 @pytest.fixture()
-def client():
+def client(monkeypatch: pytest.MonkeyPatch):
     test_db_url = os.getenv("TEST_DATABASE_URL")
     if test_db_url:
         engine = create_engine(test_db_url, pool_pre_ping=True)
@@ -32,6 +35,7 @@ def client():
             cursor.close()
 
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    monkeypatch.setattr(app_main, "engine", engine)
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
@@ -83,6 +87,49 @@ def test_register_login_and_me(client: TestClient):
         json={"username": "other_user", "email": "alex@example.com", "password": "password123"},
     )
     assert dup.status_code == 409
+
+    # Register second user and confirm dual-account username+email conflict returns 409 (never 500)
+    reg2 = client.post(
+        "/api/auth/register",
+        json={"username": "second_dev", "email": "second@example.com", "password": "password123"},
+    )
+    assert reg2.status_code == 201
+    dual_dup = client.post(
+        "/api/auth/register",
+        json={"username": "alex_dev", "email": "second@example.com", "password": "password123"},
+    )
+    assert dual_dup.status_code == 409
+
+    # Cross-field collision (new user's email matches existing username) must return 409
+    reg_at = client.post(
+        "/api/auth/register",
+        json={"username": "alice@example.com", "email": "real_alice@example.com", "password": "password123"},
+    )
+    assert reg_at.status_code == 201
+    cross_dup = client.post(
+        "/api/auth/register",
+        json={"username": "bob_dev", "email": "alice@example.com", "password": "password456"},
+    )
+    assert cross_dup.status_code == 409
+
+    # Even if legacy DB rows share username/email across accounts, login must never 500
+    with sessionmaker(bind=app_main.engine)() as db:
+        db.add(User(username="legacy_bob", email="alice@example.com", password_hash=hash_password("legacyPass99")))
+        db.commit()
+    legacy_login = client.post("/api/auth/login", json={"login": "alice@example.com", "password": "legacyPass99"})
+    assert legacy_login.status_code == 200
+    assert legacy_login.json()["user"]["username"] == "legacy_bob"
+    legacy_bad = client.post("/api/auth/login", json={"login": "alice@example.com", "password": "wrongPassword"})
+    assert legacy_bad.status_code == 401
+
+    # Email exceeding 120 chars must be rejected with 422
+    long_email = f"{'a' * 60}@{'b' * 55}.example.com"
+    assert len(long_email) > 120
+    too_long_email = client.post(
+        "/api/auth/register",
+        json={"username": "long_mail_user", "email": long_email, "password": "password123"},
+    )
+    assert too_long_email.status_code == 422
 
     # Login by username and email both work
     login_by_email = client.post("/api/auth/login", json={"login": "alex@example.com", "password": "password123"})
@@ -233,10 +280,6 @@ def test_tasks_crud_toggle_filters_and_stats(client: TestClient):
     assert len(searched.json()) == 1
     assert searched.json()[0]["id"] == t2_id
 
-    by_priority = client.get("/api/tasks?sort=priority", headers=headers)
-    assert by_priority.status_code == 200
-    assert len(by_priority.json()) == 2
-
     # Stats
     stats = client.get("/api/tasks/stats", headers=headers)
     assert stats.status_code == 200
@@ -249,6 +292,27 @@ def test_tasks_crud_toggle_filters_and_stats(client: TestClient):
         "medium_priority": 0,
         "low_priority": 1,
     }
+
+    # Verify sort order across active tasks (priority rank, due_date asc NULLS LAST, completed last)
+    two_days_ago = (date.today() - timedelta(days=2)).isoformat()
+    t3_id = client.post(
+        "/api/tasks",
+        headers=headers,
+        json={"title": "Низкий приоритет, ранний срок", "priority": "low", "due_date": two_days_ago},
+    ).json()["id"]
+    t4_id = client.post(
+        "/api/tasks",
+        headers=headers,
+        json={"title": "Средний приоритет, без срока", "priority": "medium", "due_date": None},
+    ).json()["id"]
+
+    by_priority = client.get("/api/tasks?sort=priority", headers=headers)
+    assert by_priority.status_code == 200
+    assert [t["id"] for t in by_priority.json()] == [t1_data["id"], t4_id, t3_id, t2_id]
+
+    by_due = client.get("/api/tasks?sort=due_date", headers=headers)
+    assert by_due.status_code == 200
+    assert [t["id"] for t in by_due.json()] == [t3_id, t1_data["id"], t4_id, t2_id]
 
     # Delete task
     assert client.delete(f"/api/tasks/{t2_id}", headers=headers).status_code == 204
@@ -275,6 +339,22 @@ def test_subtasks_and_cascade_delete(client: TestClient):
     # Delete subtask directly
     assert client.delete(f"/api/subtasks/{sub_id}", headers=headers).status_code == 204
     assert client.get(f"/api/tasks/{task_id}", headers=headers).json()["subtasks"] == []
+
+    # Deleting parent task cascades to all child subtasks
+    sub2_id = client.post(
+        f"/api/tasks/{task_id}/subtasks", headers=headers, json={"title": "Проверить Docker"}
+    ).json()["id"]
+    sub3_id = client.post(
+        f"/api/tasks/{task_id}/subtasks", headers=headers, json={"title": "Прогнать pytest"}
+    ).json()["id"]
+    assert client.delete(f"/api/tasks/{task_id}", headers=headers).status_code == 204
+    assert client.get(f"/api/tasks/{task_id}", headers=headers).status_code == 404
+    assert client.patch(f"/api/subtasks/{sub2_id}/toggle", headers=headers).status_code == 404
+    assert client.delete(f"/api/subtasks/{sub3_id}", headers=headers).status_code == 404
+
+    with sessionmaker(bind=app_main.engine)() as db:
+        remaining = db.execute(select(Subtask).where(Subtask.task_id == task_id)).scalars().all()
+        assert remaining == []
 
 
 def test_user_data_isolation_and_validation(client: TestClient):
@@ -322,11 +402,17 @@ def test_edge_cases_password_bytes_search_escaping_and_status_conflict(client: T
     headers = _register_and_headers(client, "edge_user", "edge@example.com")
     client.post("/api/tasks", headers=headers, json={"title": "Готовность 100%"})
     client.post("/api/tasks", headers=headers, json={"title": "Готовность 1000"})
+    client.post("/api/tasks", headers=headers, json={"title": "Отчёт_2026"})
+    client.post("/api/tasks", headers=headers, json={"title": "ОтчётX2026"})
 
-    # Searching "100%" must match literally, not treat "%" as SQL wildcard
+    # Searching "100%" and "_" must match literally, not treat "%" or "_" as SQL wildcards
     matched = client.get("/api/tasks?search=100%25", headers=headers)
     assert matched.status_code == 200
     assert [t["title"] for t in matched.json()] == ["Готовность 100%"]
+
+    matched_underscore = client.get("/api/tasks?search=Отчёт_2026", headers=headers)
+    assert matched_underscore.status_code == 200
+    assert [t["title"] for t in matched_underscore.json()] == ["Отчёт_2026"]
 
     # Contradictory status and is_completed must fail with 422
     task_id = matched.json()[0]["id"]
@@ -353,7 +439,21 @@ def test_edge_cases_password_bytes_search_escaping_and_status_conflict(client: T
 def test_category_rename_conflict_task_null_clear_and_long_login(client: TestClient):
     headers = _register_and_headers(client, "qa_user", "qa@example.com")
 
-    # Login with >72 UTF-8 byte Cyrillic password must return 401, never 500
+    # Login with >72 UTF-8 byte Cyrillic password must return 401, never 500 or silent truncation
+    exact_72_bytes = "п" * 36  # 36 Cyrillic chars == 72 UTF-8 bytes
+    _register_and_headers(client, "exact72_user", "exact72@example.com", password=exact_72_bytes)
+    assert (
+        client.post("/api/auth/login", json={"login": "exact72_user", "password": exact_72_bytes}).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/auth/login",
+            json={"login": "exact72_user", "password": f"{exact_72_bytes}а"},
+        ).status_code
+        == 401
+    )
+
     long_login = client.post(
         "/api/auth/login",
         json={"login": "qa_user", "password": "пароль" * 7},
