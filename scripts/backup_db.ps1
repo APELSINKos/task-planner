@@ -22,7 +22,7 @@ $outFile = Join-Path (Resolve-Path "backups").Path "${dbName}_${timestamp}.sql"
 $prevEncoding = [Console]::OutputEncoding
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 try {
-    $dumpLines = & docker compose exec -T db pg_dump -U $dbUser $dbName
+    $dumpLines = & docker compose exec -T db pg_dump --clean --if-exists -U $dbUser $dbName
     if ($LASTEXITCODE -ne 0) {
         throw "pg_dump failed with exit code $LASTEXITCODE"
     }
