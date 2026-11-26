@@ -12,8 +12,16 @@ const STATUS_LABELS = {
   done: "Выполнено",
 };
 
+const VIEW_LABELS = {
+  all: "Все задачи",
+  active: "Задачи в работе",
+  completed: "Выполненные задачи",
+  overdue: "Просроченные задачи",
+};
+
 const state = {
   user: null,
+  showingShowcase: false,
   categories: [],
   tasks: [],
   stats: null,
@@ -27,23 +35,38 @@ const state = {
   toastTimer: null,
   tasksRequestSeq: 0,
   lastFocusedElement: null,
+  confirmResolver: null,
 };
 
 const el = {
+  brandLink: document.getElementById("brand-link"),
+  topbarAnchors: document.getElementById("topbar-anchors"),
+  topbarGuest: document.getElementById("topbar-guest"),
+  btnTopbarDemo: document.getElementById("btn-topbar-demo"),
+  btnTopbarSignin: document.getElementById("btn-topbar-signin"),
   headerActions: document.getElementById("header-actions"),
   headerUsername: document.getElementById("header-username"),
+  btnToggleShowcase: document.getElementById("btn-toggle-showcase"),
   btnLogout: document.getElementById("btn-logout"),
   btnOpenCreate: document.getElementById("btn-open-create"),
   btnOpenCreateMobile: document.getElementById("btn-open-create-mobile"),
   btnEmptyCreate: document.getElementById("btn-empty-create"),
+  btnHeroStart: document.getElementById("btn-hero-start"),
+  btnTriageOpen: document.getElementById("btn-triage-open"),
+  authDemoWrap: document.getElementById("auth-demo-wrap"),
+  btnAuthDemo: document.getElementById("btn-auth-demo"),
+  footerApiLink: document.getElementById("footer-api-link"),
+
   globalError: document.getElementById("global-error"),
   globalErrorText: document.getElementById("global-error-text"),
   btnRetry: document.getElementById("btn-retry"),
   globalToast: document.getElementById("global-toast"),
   globalToastText: document.getElementById("global-toast-text"),
 
+  landingView: document.getElementById("landing-view"),
   authView: document.getElementById("auth-view"),
   appView: document.getElementById("app-view"),
+  authSegmented: document.getElementById("auth-segmented"),
   tabLogin: document.getElementById("tab-login"),
   tabRegister: document.getElementById("tab-register"),
   authError: document.getElementById("auth-error"),
@@ -51,23 +74,42 @@ const el = {
   loginForm: document.getElementById("login-form"),
   registerForm: document.getElementById("register-form"),
 
+  wsDate: document.getElementById("ws-date"),
+  wsGreeting: document.getElementById("ws-greeting"),
+  wsProgressLabel: document.getElementById("ws-progress-label"),
+  wsProgressFill: document.getElementById("ws-progress-fill"),
+
   statTotal: document.getElementById("stat-total"),
   statActive: document.getElementById("stat-active"),
   statCompleted: document.getElementById("stat-completed"),
   statOverdue: document.getElementById("stat-overdue"),
+  navCountTotal: document.getElementById("nav-count-total"),
+  navCountActive: document.getElementById("nav-count-active"),
+  navCountCompleted: document.getElementById("nav-count-completed"),
+  navCountOverdue: document.getElementById("nav-count-overdue"),
 
   categoryList: document.getElementById("category-list"),
   categoryForm: document.getElementById("category-form"),
   newCategoryName: document.getElementById("new-category-name"),
   newCategoryColor: document.getElementById("new-category-color"),
 
+  mobileCategoryStrip: document.getElementById("mobile-category-strip"),
+  btnMobileCatToggle: document.getElementById("btn-mobile-cat-toggle"),
+  mobileCatDrawer: document.getElementById("mobile-cat-drawer"),
+  mobileCategoryName: document.getElementById("mobile-category-name"),
+  mobileCategoryColor: document.getElementById("mobile-category-color"),
+
   filterSearch: document.getElementById("filter-search"),
   filterStatus: document.getElementById("filter-status"),
   filterPriority: document.getElementById("filter-priority"),
   filterSort: document.getElementById("filter-sort"),
+  tasksHeading: document.getElementById("tasks-heading"),
+  btnResetFilters: document.getElementById("btn-reset-filters"),
 
   tasksLoading: document.getElementById("tasks-loading"),
   tasksEmpty: document.getElementById("tasks-empty"),
+  tasksEmptyTitle: document.getElementById("tasks-empty-title"),
+  tasksEmptyText: document.getElementById("tasks-empty-text"),
   taskList: document.getElementById("task-list"),
 
   taskModal: document.getElementById("task-modal"),
@@ -88,12 +130,21 @@ const el = {
   detailBadges: document.getElementById("detail-badges"),
   detailDescription: document.getElementById("detail-description"),
   detailDates: document.getElementById("detail-dates"),
+  detailSubtasksRatio: document.getElementById("detail-subtasks-ratio"),
+  detailSubtasksBar: document.getElementById("detail-subtasks-bar"),
+  detailSubtasksBarFill: document.getElementById("detail-subtasks-bar-fill"),
   detailSubtaskList: document.getElementById("detail-subtask-list"),
   detailSubtasksEmpty: document.getElementById("detail-subtasks-empty"),
   subtaskForm: document.getElementById("subtask-form"),
   newSubtaskTitle: document.getElementById("new-subtask-title"),
   btnDetailToggle: document.getElementById("btn-detail-toggle"),
   btnDetailEdit: document.getElementById("btn-detail-edit"),
+
+  confirmModal: document.getElementById("confirm-modal"),
+  confirmModalTitle: document.getElementById("confirm-modal-title"),
+  confirmModalText: document.getElementById("confirm-modal-text"),
+  btnConfirmCancel: document.getElementById("btn-confirm-cancel"),
+  btnConfirmAccept: document.getElementById("btn-confirm-accept"),
 };
 
 function showGlobalError(message) {
@@ -130,10 +181,44 @@ function formatDateRu(isoDate) {
   return `${parts[2]}.${parts[1]}.${parts[0]}`;
 }
 
+function createInkCheckbox(checked, ariaLabel, onChange) {
+  const wrap = document.createElement("label");
+  wrap.className = "ink-check";
+
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.className = "ink-check__input";
+  input.checked = Boolean(checked);
+  if (ariaLabel) {
+    input.setAttribute("aria-label", ariaLabel);
+  }
+  input.addEventListener("change", () => onChange(input));
+
+  const box = document.createElement("span");
+  box.className = "ink-check__box";
+  box.setAttribute("aria-hidden", "true");
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("class", "ink-check__svg");
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("class", "ink-check__path");
+  path.setAttribute("pathLength", "1");
+  path.setAttribute("d", "M3 8.5 L6.5 12 L13 4.5");
+
+  svg.appendChild(path);
+  box.appendChild(svg);
+  wrap.appendChild(input);
+  wrap.appendChild(box);
+  return { wrap, input };
+}
+
 function setAuthTab(mode) {
   const isLogin = mode === "login";
-  el.tabLogin.classList.toggle("auth-tabs__btn--active", isLogin);
-  el.tabRegister.classList.toggle("auth-tabs__btn--active", !isLogin);
+  el.authSegmented.setAttribute("data-active-index", isLogin ? "0" : "1");
+  el.tabLogin.classList.toggle("segmented__btn--active", isLogin);
+  el.tabRegister.classList.toggle("segmented__btn--active", !isLogin);
   el.tabLogin.setAttribute("aria-selected", String(isLogin));
   el.tabRegister.setAttribute("aria-selected", String(!isLogin));
   el.loginForm.hidden = !isLogin;
@@ -141,38 +226,84 @@ function setAuthTab(mode) {
   hideAuthError();
 }
 
-function showAuthView(message = "") {
+function scrollToAuth() {
+  if (el.authView) {
+    el.authView.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(() => {
+      const targetInput = el.loginForm.hidden
+        ? document.getElementById("reg-username")
+        : document.getElementById("login-identifier");
+      if (targetInput) targetInput.focus({ preventScroll: true });
+    }, 380);
+  }
+}
+
+function updateTopbarMode() {
+  const isLoggedIn = Boolean(state.user);
+  const onLanding = !isLoggedIn || state.showingShowcase;
+
+  el.landingView.hidden = !onLanding;
+  el.appView.hidden = onLanding;
+  el.topbarAnchors.hidden = !onLanding;
+  el.topbarGuest.hidden = isLoggedIn;
+  el.headerActions.hidden = !isLoggedIn;
+  el.authView.hidden = isLoggedIn;
+
+  if (isLoggedIn) {
+    el.headerUsername.textContent = state.user.username;
+    el.btnToggleShowcase.textContent = state.showingShowcase ? "К задачам" : "Обзор";
+    el.btnHeroStart.textContent = "Перейти к задачам";
+  } else {
+    el.btnHeroStart.textContent = api.isDemoMode
+      ? "Открыть демо-планировщик"
+      : "Открыть планировщик";
+  }
+
+  if (window.plannerMotion && window.plannerMotion.storyController) {
+    requestAnimationFrame(() => window.plannerMotion.storyController.refresh());
+  }
+}
+
+function showAuthView(message = "", focusAuth = false) {
   state.user = null;
-  el.authView.hidden = false;
-  el.appView.hidden = true;
-  el.headerActions.hidden = true;
+  state.showingShowcase = true;
   hideGlobalError();
+  updateTopbarMode();
   if (message) {
     showAuthError(message);
+  }
+  if (focusAuth) {
+    scrollToAuth();
+  } else {
+    window.scrollTo({ top: 0, behavior: "auto" });
   }
 }
 
 function showAppView() {
-  el.authView.hidden = true;
-  el.appView.hidden = false;
-  el.headerActions.hidden = false;
-  el.headerUsername.textContent = state.user ? state.user.username : "";
+  state.showingShowcase = false;
+  updateTopbarMode();
+  if (el.wsDate && window.plannerMotion) {
+    el.wsDate.textContent = window.plannerMotion.formatRussianToday();
+  }
+  if (el.wsGreeting && state.user) {
+    el.wsGreeting.textContent = `Здравствуйте, ${state.user.username}`;
+  }
+  window.scrollTo({ top: 0, behavior: "auto" });
 }
 
 function handleApiError(err, fallbackMessage = "Произошла ошибка") {
   if (err && err.status === 401) {
     api.setToken(null);
     resetFilters();
-    closeModal(el.taskModal);
-    closeModal(el.detailModal);
-    showAuthView("Сессия истекла. Пожалуйста, войдите снова.");
+    closeAllModals();
+    showAuthView("Сессия истекла. Пожалуйста, войдите снова.", true);
     return;
   }
   showGlobalError(err?.message || fallbackMessage);
 }
 
 function openModal(modalElement) {
-  if (document.activeElement instanceof HTMLElement) {
+  if (document.activeElement instanceof HTMLElement && !modalElement.contains(document.activeElement)) {
     state.lastFocusedElement = document.activeElement;
   }
   modalElement.hidden = false;
@@ -180,15 +311,44 @@ function openModal(modalElement) {
 }
 
 function closeModal(modalElement) {
-  if (modalElement.hidden) return;
+  if (!modalElement || modalElement.hidden) return;
   modalElement.hidden = true;
-  if (el.taskModal.hidden && el.detailModal.hidden) {
+
+  if (modalElement === el.confirmModal && state.confirmResolver) {
+    const resolve = state.confirmResolver;
+    state.confirmResolver = null;
+    resolve(false);
+  }
+
+  if (el.taskModal.hidden && el.detailModal.hidden && el.confirmModal.hidden) {
     document.body.style.overflow = "";
     if (state.lastFocusedElement && document.contains(state.lastFocusedElement)) {
       state.lastFocusedElement.focus();
       state.lastFocusedElement = null;
     }
   }
+}
+
+function closeAllModals() {
+  closeModal(el.confirmModal);
+  closeModal(el.taskModal);
+  closeModal(el.detailModal);
+}
+
+function askConfirm(title, message, acceptLabel = "Удалить") {
+  if (state.confirmResolver) {
+    state.confirmResolver(false);
+    state.confirmResolver = null;
+  }
+  el.confirmModalTitle.textContent = title;
+  el.confirmModalText.textContent = message;
+  el.btnConfirmAccept.textContent = acceptLabel;
+  openModal(el.confirmModal);
+  el.btnConfirmCancel.focus();
+
+  return new Promise((resolve) => {
+    state.confirmResolver = resolve;
+  });
 }
 
 function resetFilters() {
@@ -202,34 +362,98 @@ function resetFilters() {
   el.filterStatus.value = "all";
   el.filterPriority.value = "";
   el.filterSort.value = "created_at";
+  syncActiveFiltersUi();
+}
+
+function hasActiveFilters() {
+  return (
+    state.selectedCategoryId !== null ||
+    state.statusFilter !== "all" ||
+    Boolean(state.priorityFilter) ||
+    Boolean(state.search.trim())
+  );
+}
+
+function syncActiveFiltersUi() {
+  el.filterStatus.value = state.statusFilter;
+
+  document.querySelectorAll("[data-smart]").forEach((btn) => {
+    const val = btn.getAttribute("data-smart");
+    const active = state.statusFilter === val && state.selectedCategoryId === null;
+    btn.classList.toggle("smart-nav__item--active", active);
+  });
+
+  document.querySelectorAll("[data-metric-filter]").forEach((cell) => {
+    const val = cell.getAttribute("data-metric-filter");
+    cell.classList.toggle("metrics__cell--active", state.statusFilter === val);
+  });
+
+  let heading = VIEW_LABELS[state.statusFilter] || "Все задачи";
+  if (state.selectedCategoryId !== null) {
+    const cat = state.categories.find((c) => c.id === state.selectedCategoryId);
+    if (cat) {
+      heading = state.statusFilter === "all" ? cat.name : `${cat.name} · ${heading.toLowerCase()}`;
+    }
+  }
+  el.tasksHeading.textContent = heading;
+  el.btnResetFilters.hidden = !hasActiveFilters();
 }
 
 function renderStats() {
   if (!state.stats) return;
-  el.statTotal.textContent = String(state.stats.total);
-  el.statActive.textContent = String(state.stats.active);
-  el.statCompleted.textContent = String(state.stats.completed);
-  el.statOverdue.textContent = String(state.stats.overdue);
+  const { total, active, completed, overdue } = state.stats;
+  el.statTotal.textContent = String(total);
+  el.statActive.textContent = String(active);
+  el.statCompleted.textContent = String(completed);
+  el.statOverdue.textContent = String(overdue);
+
+  el.navCountTotal.textContent = String(total);
+  el.navCountActive.textContent = String(active);
+  el.navCountCompleted.textContent = String(completed);
+  el.navCountOverdue.textContent = String(overdue);
+
+  const ratio = total > 0 ? completed / total : 0;
+  el.wsProgressLabel.textContent =
+    total > 0
+      ? `Выполнено ${completed} из ${total} (${Math.round(ratio * 100)}%)`
+      : "Задач пока нет";
+  el.wsProgressFill.style.transform = `scaleX(${ratio.toFixed(4)})`;
 }
 
 function renderCategories() {
+  // Desktop sidebar list
   el.categoryList.innerHTML = "";
-
   const allItem = document.createElement("li");
   allItem.className = "category-list__row";
   const allBtn = document.createElement("button");
   allBtn.type = "button";
-  allBtn.className = `category-list__btn ${state.selectedCategoryId === null ? "category-list__btn--active" : ""}`;
-  allBtn.textContent = "Все задачи";
+  allBtn.className = `category-list__btn ${state.selectedCategoryId === null ? "category-list__btn--all-active" : ""}`;
+  allBtn.textContent = "Все категории";
   allBtn.addEventListener("click", () => {
     state.selectedCategoryId = null;
     renderCategories();
+    syncActiveFiltersUi();
     loadTasks();
   });
   allItem.appendChild(allBtn);
   el.categoryList.appendChild(allItem);
 
+  // Mobile horizontal strip
+  el.mobileCategoryStrip.innerHTML = "";
+  const allPill = document.createElement("button");
+  allPill.type = "button";
+  allPill.className = `cat-pill ${state.selectedCategoryId === null ? "cat-pill--active" : ""}`;
+  allPill.textContent = "Все";
+  allPill.addEventListener("click", () => {
+    state.selectedCategoryId = null;
+    renderCategories();
+    syncActiveFiltersUi();
+    loadTasks();
+  });
+  el.mobileCategoryStrip.appendChild(allPill);
+
   for (const cat of state.categories) {
+    // Sidebar item
     const li = document.createElement("li");
     li.className = "category-list__row";
 
@@ -243,6 +467,7 @@ function renderCategories() {
     dot.setAttribute("aria-hidden", "true");
 
     const label = document.createElement("span");
+    label.className = "category-list__name";
     label.textContent = cat.name;
 
     btn.appendChild(dot);
@@ -250,12 +475,13 @@ function renderCategories() {
     btn.addEventListener("click", () => {
       state.selectedCategoryId = cat.id;
       renderCategories();
+      syncActiveFiltersUi();
       loadTasks();
     });
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
-    delBtn.className = "icon-btn";
+    delBtn.className = "icon-btn icon-btn--quiet";
     delBtn.textContent = "×";
     delBtn.setAttribute("aria-label", `Удалить категорию ${cat.name}`);
     delBtn.addEventListener("click", () => handleDeleteCategory(cat));
@@ -263,6 +489,24 @@ function renderCategories() {
     li.appendChild(btn);
     li.appendChild(delBtn);
     el.categoryList.appendChild(li);
+
+    // Mobile pill
+    const pill = document.createElement("button");
+    pill.type = "button";
+    pill.className = `cat-pill ${state.selectedCategoryId === cat.id ? "cat-pill--active" : ""}`;
+    const pDot = document.createElement("span");
+    pDot.className = "category-list__dot";
+    pDot.style.backgroundColor = cat.color;
+    pDot.setAttribute("aria-hidden", "true");
+    pill.appendChild(pDot);
+    pill.appendChild(document.createTextNode(cat.name));
+    pill.addEventListener("click", () => {
+      state.selectedCategoryId = cat.id;
+      renderCategories();
+      syncActiveFiltersUi();
+      loadTasks();
+    });
+    el.mobileCategoryStrip.appendChild(pill);
   }
 
   // Sync category options inside task modal select
@@ -282,9 +526,9 @@ function renderCategories() {
   el.taskCategory.value = currentVal;
 }
 
-function createBadge(text, modifier = "badge--neutral", dotColor = null) {
+function createChip(text, modifier = "", dotColor = null) {
   const span = document.createElement("span");
-  span.className = `badge ${modifier}`;
+  span.className = modifier ? `chip ${modifier}` : "chip";
   if (dotColor) {
     const dot = document.createElement("span");
     dot.className = "category-list__dot";
@@ -301,62 +545,70 @@ function renderTasks() {
 
   if (state.tasks.length === 0) {
     el.tasksEmpty.hidden = false;
+    if (hasActiveFilters()) {
+      el.tasksEmptyTitle.textContent = "Ничего не найдено";
+      el.tasksEmptyText.textContent = "Попробуйте ослабить фильтры или создайте новую задачу.";
+    } else {
+      el.tasksEmptyTitle.textContent = "На этом листе пока чисто";
+      el.tasksEmptyText.textContent = "Добавьте первую задачу, чтобы наметить план на день.";
+    }
     return;
   }
   el.tasksEmpty.hidden = true;
 
-  for (const task of state.tasks) {
+  state.tasks.forEach((task, index) => {
     const li = document.createElement("li");
-    li.className = `task-card ${task.is_completed ? "task-card--completed" : ""}`;
+    const prioClass = `task-row--prio-${task.priority || "medium"}`;
+    li.className = `task-row ${prioClass} ${task.is_completed ? "task-row--completed" : ""}`;
+    li.style.setProperty("--row-index", String(Math.min(index, 8)));
 
     const mainRow = document.createElement("div");
-    mainRow.className = "task-card__main";
+    mainRow.className = "task-row__main";
 
-    const checkWrap = document.createElement("label");
-    checkWrap.className = "task-card__check-wrap";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "task-card__checkbox";
-    checkbox.checked = task.is_completed;
-    checkbox.setAttribute("aria-label", `Отметить задачу «${task.title}» выполненной`);
-    checkbox.addEventListener("change", () => handleToggleTask(task.id, checkbox));
-    checkWrap.appendChild(checkbox);
+    const { wrap: checkWrap } = createInkCheckbox(
+      task.is_completed,
+      `Отметить задачу «${task.title}» выполненной`,
+      (checkboxEl) => handleToggleTask(task.id, checkboxEl)
+    );
 
     const content = document.createElement("div");
-    content.className = "task-card__content";
+    content.className = "task-row__content";
 
-    const title = document.createElement("h3");
-    title.className = "task-card__title";
-    title.textContent = task.title;
-    content.appendChild(title);
+    const titleBtn = document.createElement("button");
+    titleBtn.type = "button";
+    titleBtn.className = "task-row__title-btn";
+    titleBtn.textContent = task.title;
+    titleBtn.addEventListener("click", () => openDetailModal(task.id));
+    content.appendChild(titleBtn);
 
     if (task.description) {
       const desc = document.createElement("p");
-      desc.className = "task-card__desc";
-      desc.textContent = task.description.length > 140
-        ? `${task.description.slice(0, 140)}…`
-        : task.description;
+      desc.className = "task-row__desc";
+      desc.textContent =
+        task.description.length > 140 ? `${task.description.slice(0, 140)}…` : task.description;
       content.appendChild(desc);
     }
 
     const meta = document.createElement("div");
-    meta.className = "task-card__meta";
+    meta.className = "task-row__meta";
 
-    meta.appendChild(createBadge(PRIORITY_LABELS[task.priority] || task.priority, `badge--priority-${task.priority}`));
-    meta.appendChild(createBadge(STATUS_LABELS[task.status] || task.status, "badge--neutral"));
+    meta.appendChild(
+      createChip(PRIORITY_LABELS[task.priority] || task.priority, `chip--prio-${task.priority}`)
+    );
+    meta.appendChild(createChip(STATUS_LABELS[task.status] || task.status));
 
     if (task.category) {
-      meta.appendChild(createBadge(task.category.name, "badge--neutral", task.category.color));
+      meta.appendChild(createChip(task.category.name, "", task.category.color));
     }
 
     if (task.due_date) {
       const dateText = `До ${formatDateRu(task.due_date)}`;
-      meta.appendChild(createBadge(dateText, task.is_overdue ? "badge--overdue" : "badge--neutral"));
+      meta.appendChild(createChip(dateText, task.is_overdue ? "chip--overdue" : ""));
     }
 
     if (task.subtasks && task.subtasks.length > 0) {
       const doneCount = task.subtasks.filter((s) => s.is_completed).length;
-      meta.appendChild(createBadge(`Подзадачи: ${doneCount}/${task.subtasks.length}`, "badge--neutral"));
+      meta.appendChild(createChip(`Подзадачи: ${doneCount}/${task.subtasks.length}`));
     }
 
     content.appendChild(meta);
@@ -364,23 +616,23 @@ function renderTasks() {
     mainRow.appendChild(content);
 
     const actions = document.createElement("div");
-    actions.className = "task-card__actions";
+    actions.className = "task-row__actions";
 
     const detailBtn = document.createElement("button");
     detailBtn.type = "button";
-    detailBtn.className = "btn btn--secondary btn--sm";
+    detailBtn.className = "btn btn--secondary btn--compact";
     detailBtn.textContent = "Подробнее";
     detailBtn.addEventListener("click", () => openDetailModal(task.id));
 
     const editBtn = document.createElement("button");
     editBtn.type = "button";
-    editBtn.className = "btn btn--ghost btn--sm";
+    editBtn.className = "btn btn--ghost btn--compact";
     editBtn.textContent = "Изменить";
     editBtn.addEventListener("click", () => openTaskModal(task));
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
-    delBtn.className = "btn btn--danger-ghost btn--sm";
+    delBtn.className = "btn btn--danger-ghost btn--compact";
     delBtn.textContent = "Удалить";
     delBtn.addEventListener("click", () => handleDeleteTask(task));
 
@@ -391,7 +643,7 @@ function renderTasks() {
     li.appendChild(mainRow);
     li.appendChild(actions);
     el.taskList.appendChild(li);
-  }
+  });
 }
 
 async function loadWorkspace() {
@@ -404,6 +656,7 @@ async function loadWorkspace() {
     state.stats = stats;
     renderCategories();
     renderStats();
+    syncActiveFiltersUi();
     await loadTasks();
   } catch (err) {
     el.tasksLoading.hidden = true;
@@ -421,20 +674,25 @@ async function loadTasks() {
     sort: state.sort,
     search: state.search,
   };
-  if (state.statusFilter === "active") params.completed = false;
-  if (state.statusFilter === "completed") params.completed = true;
+  if (state.statusFilter === "active" || state.statusFilter === "overdue") {
+    params.completed = false;
+  } else if (state.statusFilter === "completed") {
+    params.completed = true;
+  }
   if (state.priorityFilter) params.priority = state.priorityFilter;
   if (state.selectedCategoryId !== null) params.category_id = state.selectedCategoryId;
 
   try {
-    const [tasks, stats] = await Promise.all([api.getTasks(params), api.getStats()]);
+    const [rawTasks, stats] = await Promise.all([api.getTasks(params), api.getStats()]);
     if (requestSeq !== state.tasksRequestSeq) {
       return;
     }
-    state.tasks = tasks;
+    state.tasks =
+      state.statusFilter === "overdue" ? rawTasks.filter((t) => t.is_overdue) : rawTasks;
     state.stats = stats;
     el.tasksLoading.hidden = true;
     renderStats();
+    syncActiveFiltersUi();
     renderTasks();
   } catch (err) {
     if (requestSeq !== state.tasksRequestSeq) {
@@ -505,8 +763,12 @@ async function handleSaveTask(event) {
     }
     closeModal(el.taskModal);
     await loadTasks();
-    if (state.activeDetailTaskId && existingId === state.activeDetailTaskId && !el.detailModal.hidden) {
-      await openDetailModal(existingId);
+    if (
+      state.activeDetailTaskId &&
+      existingId === state.activeDetailTaskId &&
+      !el.detailModal.hidden
+    ) {
+      await renderDetailTask(existingId);
     }
   } catch (err) {
     if (err.status === 401) {
@@ -534,7 +796,13 @@ async function handleToggleTask(taskId, checkboxEl = null) {
 }
 
 async function handleDeleteTask(task) {
-  if (!window.confirm(`Удалить задачу «${task.title}»?`)) return;
+  const confirmed = await askConfirm(
+    "Удалить задачу?",
+    `Задача «${task.title}» и все её подзадачи будут удалены без возможности восстановления.`,
+    "Удалить задачу"
+  );
+  if (!confirmed) return;
+
   try {
     await api.deleteTask(task.id);
     showToast("Задача удалена");
@@ -545,7 +813,13 @@ async function handleDeleteTask(task) {
 }
 
 async function handleDeleteCategory(cat) {
-  if (!window.confirm(`Удалить категорию «${cat.name}»? Задачи сохранятся без категории.`)) return;
+  const confirmed = await askConfirm(
+    "Удалить категорию?",
+    `Категория «${cat.name}» будет удалена. Все задачи сохранятся и перейдут в раздел без категории.`,
+    "Удалить категорию"
+  );
+  if (!confirmed) return;
+
   try {
     await api.deleteCategory(cat.id);
     if (state.selectedCategoryId === cat.id) {
@@ -558,20 +832,37 @@ async function handleDeleteCategory(cat) {
   }
 }
 
+async function submitNewCategory(nameInput, colorInput, onSuccess) {
+  const name = nameInput.value.trim();
+  const color = colorInput.value;
+  if (!name) return;
+  try {
+    await api.createCategory({ name, color });
+    nameInput.value = "";
+    showToast("Категория добавлена");
+    if (onSuccess) onSuccess();
+    await loadWorkspace();
+  } catch (err) {
+    handleApiError(err, "Не удалось создать категорию");
+  }
+}
+
 async function renderDetailTask(taskId) {
   const task = await api.getTask(taskId);
   state.activeDetailTaskId = task.id;
   el.detailModalTitle.textContent = task.title;
 
   el.detailBadges.innerHTML = "";
-  el.detailBadges.appendChild(createBadge(PRIORITY_LABELS[task.priority], `badge--priority-${task.priority}`));
-  el.detailBadges.appendChild(createBadge(STATUS_LABELS[task.status], "badge--neutral"));
+  el.detailBadges.appendChild(
+    createChip(PRIORITY_LABELS[task.priority], `chip--prio-${task.priority}`)
+  );
+  el.detailBadges.appendChild(createChip(STATUS_LABELS[task.status]));
   if (task.category) {
-    el.detailBadges.appendChild(createBadge(task.category.name, "badge--neutral", task.category.color));
+    el.detailBadges.appendChild(createChip(task.category.name, "", task.category.color));
   }
   if (task.due_date) {
     el.detailBadges.appendChild(
-      createBadge(`Срок: ${formatDateRu(task.due_date)}`, task.is_overdue ? "badge--overdue" : "badge--neutral")
+      createChip(`Срок: ${formatDateRu(task.due_date)}`, task.is_overdue ? "chip--overdue" : "")
     );
   }
 
@@ -586,40 +877,48 @@ async function renderDetailTask(taskId) {
   };
 
   el.detailSubtaskList.innerHTML = "";
-  if (!task.subtasks || task.subtasks.length === 0) {
+  const subtasks = task.subtasks || [];
+  if (subtasks.length === 0) {
     el.detailSubtasksEmpty.hidden = false;
+    el.detailSubtasksRatio.textContent = "";
+    el.detailSubtasksBar.hidden = true;
   } else {
     el.detailSubtasksEmpty.hidden = true;
-    for (const sub of task.subtasks) {
+    const doneCount = subtasks.filter((s) => s.is_completed).length;
+    el.detailSubtasksRatio.textContent = `${doneCount} из ${subtasks.length}`;
+    el.detailSubtasksBar.hidden = false;
+    el.detailSubtasksBarFill.style.transform = `scaleX(${(doneCount / subtasks.length).toFixed(4)})`;
+
+    for (const sub of subtasks) {
       const li = document.createElement("li");
       li.className = "subtask-list__item";
 
-      const label = document.createElement("label");
+      const label = document.createElement("div");
       label.className = `subtask-list__label ${sub.is_completed ? "subtask-list__label--done" : ""}`;
 
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.className = "task-card__checkbox";
-      cb.checked = sub.is_completed;
-      cb.addEventListener("change", async () => {
-        try {
-          await api.toggleSubtask(sub.id);
-          await renderDetailTask(task.id);
-          await loadTasks();
-        } catch (err) {
-          cb.checked = !cb.checked;
-          handleApiError(err, "Не удалось обновить подзадачу");
+      const { wrap: cbWrap } = createInkCheckbox(
+        sub.is_completed,
+        `Отметить подзадачу «${sub.title}» выполненной`,
+        async (cbEl) => {
+          try {
+            await api.toggleSubtask(sub.id);
+            await renderDetailTask(task.id);
+            await loadTasks();
+          } catch (err) {
+            cbEl.checked = !cbEl.checked;
+            handleApiError(err, "Не удалось обновить подзадачу");
+          }
         }
-      });
+      );
 
       const text = document.createElement("span");
       text.textContent = sub.title;
-      label.appendChild(cb);
+      label.appendChild(cbWrap);
       label.appendChild(text);
 
       const delBtn = document.createElement("button");
       delBtn.type = "button";
-      delBtn.className = "icon-btn";
+      delBtn.className = "icon-btn icon-btn--quiet";
       delBtn.textContent = "×";
       delBtn.setAttribute("aria-label", `Удалить подзадачу ${sub.title}`);
       delBtn.addEventListener("click", async () => {
@@ -650,9 +949,78 @@ async function openDetailModal(taskId) {
   }
 }
 
+async function enterDemoWorkspace() {
+  if (!api.isDemoMode) {
+    scrollToAuth();
+    return;
+  }
+  try {
+    const result = await api.login({ login: "demo_user", password: "demo" });
+    api.setToken(result.access_token);
+    state.user = result.user;
+    showAppView();
+    showToast("Открыт интерактивный демо-режим");
+    await loadWorkspace();
+  } catch (err) {
+    showGlobalError(err.message || "Не удалось открыть демо");
+  }
+}
+
 function bindEvents() {
   el.tabLogin.addEventListener("click", () => setAuthTab("login"));
   el.tabRegister.addEventListener("click", () => setAuthTab("register"));
+
+  el.brandLink.addEventListener("click", (event) => {
+    if (state.user) {
+      event.preventDefault();
+      if (state.showingShowcase) {
+        showAppView();
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }
+  });
+
+  el.btnTopbarSignin.addEventListener("click", (event) => {
+    event.preventDefault();
+    scrollToAuth();
+  });
+
+  el.btnHeroStart.addEventListener("click", () => {
+    if (state.user) {
+      showAppView();
+    } else if (api.isDemoMode) {
+      enterDemoWorkspace();
+    } else {
+      scrollToAuth();
+    }
+  });
+
+  if (el.btnTriageOpen) {
+    el.btnTriageOpen.addEventListener("click", () => {
+      if (state.user) {
+        showAppView();
+      } else if (api.isDemoMode) {
+        enterDemoWorkspace();
+      } else {
+        scrollToAuth();
+      }
+    });
+  }
+
+  if (el.btnTopbarDemo) {
+    el.btnTopbarDemo.addEventListener("click", enterDemoWorkspace);
+  }
+  if (el.btnAuthDemo) {
+    el.btnAuthDemo.addEventListener("click", enterDemoWorkspace);
+  }
+
+  el.btnToggleShowcase.addEventListener("click", () => {
+    if (!state.user) return;
+    state.showingShowcase = !state.showingShowcase;
+    updateTopbarMode();
+    window.scrollTo({ top: 0, behavior: "auto" });
+  });
 
   el.loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -681,7 +1049,9 @@ function bindEvents() {
     const email = document.getElementById("reg-email").value.trim();
     const password = document.getElementById("reg-password").value;
     if (username.length < 3 || !email || password.length < 6) {
-      showAuthError("Проверьте корректность имени (от 3 символов), email и пароля (от 6 символов)");
+      showAuthError(
+        "Проверьте корректность имени (от 3 символов), email и пароля (от 6 символов)"
+      );
       return;
     }
     try {
@@ -711,24 +1081,33 @@ function bindEvents() {
       loadWorkspace();
     }
   });
-  el.btnOpenCreate.addEventListener("click", () => openTaskModal());
+
+  el.btnOpenCreate.addEventListener("click", () => {
+    if (state.showingShowcase) showAppView();
+    openTaskModal();
+  });
   el.btnOpenCreateMobile.addEventListener("click", () => openTaskModal());
   el.btnEmptyCreate.addEventListener("click", () => openTaskModal());
   el.taskForm.addEventListener("submit", handleSaveTask);
 
-  el.categoryForm.addEventListener("submit", async (event) => {
+  el.categoryForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const name = el.newCategoryName.value.trim();
-    const color = el.newCategoryColor.value;
-    if (!name) return;
-    try {
-      await api.createCategory({ name, color });
-      el.newCategoryName.value = "";
-      showToast("Категория добавлена");
-      await loadWorkspace();
-    } catch (err) {
-      handleApiError(err, "Не удалось создать категорию");
-    }
+    submitNewCategory(el.newCategoryName, el.newCategoryColor);
+  });
+
+  el.btnMobileCatToggle.addEventListener("click", () => {
+    const willShow = el.mobileCatDrawer.hidden;
+    el.mobileCatDrawer.hidden = !willShow;
+    el.btnMobileCatToggle.setAttribute("aria-expanded", String(willShow));
+    if (willShow) el.mobileCategoryName.focus();
+  });
+
+  el.mobileCatDrawer.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitNewCategory(el.mobileCategoryName, el.mobileCategoryColor, () => {
+      el.mobileCatDrawer.hidden = true;
+      el.btnMobileCatToggle.setAttribute("aria-expanded", "false");
+    });
   });
 
   el.subtaskForm.addEventListener("submit", async (event) => {
@@ -745,27 +1124,64 @@ function bindEvents() {
     }
   });
 
+  // Smart views & clickable metrics
+  document.querySelectorAll("[data-smart]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.statusFilter = btn.getAttribute("data-smart");
+      state.selectedCategoryId = null;
+      renderCategories();
+      syncActiveFiltersUi();
+      loadTasks();
+    });
+  });
+
+  document.querySelectorAll("[data-metric-filter]").forEach((cell) => {
+    cell.addEventListener("click", () => {
+      state.statusFilter = cell.getAttribute("data-metric-filter");
+      syncActiveFiltersUi();
+      loadTasks();
+    });
+  });
+
+  el.btnResetFilters.addEventListener("click", () => {
+    resetFilters();
+    renderCategories();
+    loadTasks();
+  });
+
   el.filterSearch.addEventListener("input", () => {
     clearTimeout(state.searchTimer);
     state.searchTimer = setTimeout(() => {
       state.search = el.filterSearch.value;
+      syncActiveFiltersUi();
       loadTasks();
-    }, 250);
+    }, 240);
   });
 
   el.filterStatus.addEventListener("change", () => {
     state.statusFilter = el.filterStatus.value;
+    syncActiveFiltersUi();
     loadTasks();
   });
 
   el.filterPriority.addEventListener("change", () => {
     state.priorityFilter = el.filterPriority.value;
+    syncActiveFiltersUi();
     loadTasks();
   });
 
   el.filterSort.addEventListener("change", () => {
     state.sort = el.filterSort.value;
     loadTasks();
+  });
+
+  // Confirm modal actions
+  el.btnConfirmCancel.addEventListener("click", () => closeModal(el.confirmModal));
+  el.btnConfirmAccept.addEventListener("click", () => {
+    const resolve = state.confirmResolver;
+    state.confirmResolver = null;
+    closeModal(el.confirmModal);
+    if (resolve) resolve(true);
   });
 
   document.querySelectorAll("[data-close-modal]").forEach((node) => {
@@ -778,13 +1194,43 @@ function bindEvents() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      if (!el.taskModal.hidden) closeModal(el.taskModal);
-      if (!el.detailModal.hidden) closeModal(el.detailModal);
+      if (!el.confirmModal.hidden) {
+        closeModal(el.confirmModal);
+      } else if (!el.taskModal.hidden) {
+        closeModal(el.taskModal);
+      } else if (!el.detailModal.hidden) {
+        closeModal(el.detailModal);
+      }
+      return;
+    }
+
+    // Focus search input with '/' when inside workspace
+    if (
+      event.key === "/" &&
+      !el.appView.hidden &&
+      el.taskModal.hidden &&
+      el.detailModal.hidden &&
+      el.confirmModal.hidden &&
+      !(document.activeElement instanceof HTMLInputElement) &&
+      !(document.activeElement instanceof HTMLTextAreaElement) &&
+      !(document.activeElement instanceof HTMLSelectElement)
+    ) {
+      event.preventDefault();
+      el.filterSearch.focus();
     }
   });
 }
 
 async function initSession() {
+  if (api.isDemoMode) {
+    el.btnTopbarDemo.hidden = false;
+    el.authDemoWrap.hidden = false;
+    if (el.footerApiLink) {
+      el.footerApiLink.href = "https://github.com/APELSINKos/task-planner";
+      el.footerApiLink.textContent = "Исходный код на GitHub";
+    }
+  }
+
   const token = api.getToken();
   if (!token) {
     showAuthView();
@@ -799,26 +1245,27 @@ async function initSession() {
   } catch (err) {
     if (err && err.status === 401) {
       api.setToken(null);
-      resetFilters();
-      showAuthView("Сессия истекла. Пожалуйста, войдите снова.");
-    } else {
-      el.authView.hidden = true;
-      el.appView.hidden = false;
-      el.headerActions.hidden = false;
-      el.tasksLoading.hidden = true;
-      showGlobalError(err?.message || "Сервер временно недоступен. Попробуйте повторить запрос.");
+      showAuthView("Сессия истекла. Пожалуйста, войдите снова.", true);
+      return;
     }
+    // Preserve token on transient server/network error so Retry recovers cleanly
+    state.showingShowcase = true;
+    updateTopbarMode();
+    showGlobalError(
+      err?.message || "Сервер временно недоступен. Нажмите «Повторить» после восстановления связи."
+    );
   }
 }
 
-async function initApp() {
-  bindEvents();
-
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
-  }
-
-  await initSession();
+// Register lightweight PWA service worker when supported
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
 }
 
-initApp();
+if (window.plannerMotion) {
+  window.plannerMotion.init();
+}
+bindEvents();
+initSession();

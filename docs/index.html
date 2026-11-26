@@ -3,198 +3,675 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Веб-приложение для планирования и контроля личных и учебных задач">
-  <meta name="theme-color" content="#1e40af">
+  <meta name="description" content="Планировщик задач — спокойный рабочий лист для сроков, категорий и подзадач">
+  <meta name="theme-color" content="#1a45c2">
   <title>Планировщик задач</title>
   <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,500;0,7..72,600;1,7..72,400;1,7..72,500&family=Onest:wght@400;500;600;700&display=swap">
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("task_planner_theme");
+        var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var theme = saved === "dark" || saved === "light" ? saved : (prefersDark ? "dark" : "light");
+        if (theme === "dark") {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      } catch (_e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body class="page">
   <a class="skip-link" href="#main-content">Перейти к основному содержимому</a>
 
-  <header class="header">
-    <div class="container header__inner">
-      <div class="header__brand">
+  <header class="topbar" id="topbar">
+    <div class="topbar__progress" aria-hidden="true">
+      <div class="topbar__progress-fill" id="scroll-progress-fill"></div>
+    </div>
+    <div class="container topbar__inner">
+      <a class="topbar__brand" href="#top" id="brand-link">
         <img
-          class="header__logo"
+          class="topbar__logo"
           src="icons/favicon.svg"
           alt="Логотип приложения Планировщик задач"
-          width="36"
-          height="36"
+          width="32"
+          height="32"
         >
-        <div>
-          <h1 class="header__title">Планировщик задач</h1>
-          <p class="header__subtitle">Контроль сроков, приоритетов и этапов работы</p>
-        </div>
-      </div>
+        <span class="topbar__wordmark">Планировщик<span class="topbar__wordmark-ext"> задач</span></span>
+      </a>
 
-      <nav class="header__nav" aria-label="Действия пользователя" id="header-actions" hidden>
-        <span class="header__user" id="header-username"></span>
-        <button type="button" class="btn btn--primary" id="btn-open-create">+ Новая задача</button>
-        <button type="button" class="btn btn--ghost" id="btn-logout">Выйти</button>
+      <nav class="topbar__anchors" id="topbar-anchors" aria-label="Разделы обзора">
+        <a class="topbar__link" href="#how-it-works">Как работает</a>
+        <a class="topbar__link" href="#try-demo">Попробовать</a>
+        <a class="topbar__link" href="#rhythm">Ритм</a>
       </nav>
+
+      <div class="topbar__controls">
+        <button
+          type="button"
+          class="icon-btn icon-btn--quiet"
+          id="btn-theme-toggle"
+          aria-label="Переключить цветовую тему"
+          title="Переключить тему"
+        >
+          <svg class="theme-icon theme-icon--sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+          </svg>
+          <svg class="theme-icon theme-icon--moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+
+        <nav class="topbar__guest" id="topbar-guest" aria-label="Вход в приложение">
+          <button type="button" class="btn btn--secondary btn--compact" id="btn-topbar-demo" hidden>
+            Открыть демо
+          </button>
+          <a class="btn btn--primary btn--compact" href="#auth-view" id="btn-topbar-signin">Войти</a>
+        </nav>
+
+        <nav class="topbar__user-nav" id="header-actions" aria-label="Действия пользователя" hidden>
+          <button type="button" class="btn btn--quiet btn--compact" id="btn-toggle-showcase">
+            Обзор
+          </button>
+          <span class="topbar__username" id="header-username"></span>
+          <button type="button" class="btn btn--primary btn--compact" id="btn-open-create">
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M10 4v12M4 10h12"/>
+            </svg>
+            <span>Новая задача</span>
+          </button>
+          <button type="button" class="btn btn--ghost btn--compact" id="btn-logout">Выйти</button>
+        </nav>
+      </div>
     </div>
   </header>
 
   <main class="main" id="main-content">
+    <!-- Status & feedback notifications -->
     <div class="container">
-      <!-- Status banner for network/operation feedback -->
       <div class="alert alert--error" id="global-error" role="alert" aria-live="assertive" hidden>
         <p class="alert__text" id="global-error-text"></p>
-        <button type="button" class="btn btn--secondary btn--sm" id="btn-retry">Повторить</button>
+        <button type="button" class="btn btn--secondary btn--compact" id="btn-retry">Повторить</button>
       </div>
+    </div>
 
-      <div class="alert alert--success" id="global-toast" role="status" aria-live="polite" hidden>
-        <p class="alert__text" id="global-toast-text"></p>
-      </div>
+    <div class="toast" id="global-toast" role="status" aria-live="polite" hidden>
+      <span class="toast__dot" aria-hidden="true"></span>
+      <p class="toast__text" id="global-toast-text"></p>
+    </div>
 
-      <!-- Authentication screen -->
-      <section class="auth-section" id="auth-view" aria-labelledby="auth-heading">
-        <div class="auth-card">
-          <div class="auth-card__intro">
-            <h2 class="auth-card__heading" id="auth-heading">Добро пожаловать</h2>
-            <p class="auth-card__lead">
-              Войдите в учётную запись или зарегистрируйтесь, чтобы сохранять задачи,
-              категории и прогресс выполнения на сервере.
-            </p>
-          </div>
+    <!-- ================================================================
+         VIEW 1: EDITORIAL SHOWCASE + INTEGRATED AUTH (#landing-view)
+         ================================================================ -->
+    <div class="showcase-wrap" id="landing-view">
+      <div class="container">
+        <div class="sheet" id="top">
 
-          <div class="auth-tabs" role="tablist" aria-label="Режим входа">
-            <button
-              type="button"
-              class="auth-tabs__btn auth-tabs__btn--active"
-              role="tab"
-              aria-selected="true"
-              aria-controls="login-form"
-              id="tab-login"
-            >
-              Вход
-            </button>
-            <button
-              type="button"
-              class="auth-tabs__btn"
-              role="tab"
-              aria-selected="false"
-              aria-controls="register-form"
-              id="tab-register"
-            >
-              Регистрация
-            </button>
-          </div>
+          <!-- Chapter 1: Hero -->
+          <section class="sheet__row hero" aria-labelledby="hero-title">
+            <p class="margin-note hero__margin-note" id="hero-margin-date">Рабочий лист</p>
+            <div class="hero__body">
+              <h1 class="hero__title" id="hero-title">
+                <span class="hero__title-line">Задачи складываются</span>
+                <span class="hero__title-line">в спокойный день.</span>
+              </h1>
 
-          <div class="alert alert--error" id="auth-error" role="alert" hidden>
-            <p class="alert__text" id="auth-error-text"></p>
-          </div>
+              <div class="hero__grid">
+                <div class="hero__copy">
+                  <p class="hero__lead">
+                    Один лист для сроков, категорий и подзадач — без перегруженных
+                    досок, лишнего шума и потерянных дедлайнов.
+                  </p>
+                  <div class="hero__actions">
+                    <button type="button" class="btn btn--primary btn--lg" id="btn-hero-start">
+                      Открыть планировщик
+                    </button>
+                    <a class="hero__text-link" href="#how-it-works">Посмотреть, как работает</a>
+                  </div>
+                </div>
 
-          <form class="form" id="login-form" novalidate>
-            <div class="form__group">
-              <label class="form__label" for="login-identifier">Логин или email</label>
-              <input
-                class="form__input"
-                type="text"
-                id="login-identifier"
-                name="login"
-                autocomplete="username"
-                placeholder="alex_kovalev или alex@example.com"
-                required
-              >
+                <!-- Single orchestrated load illustration: printed daily sheet -->
+                <div class="day-sheet-frame" aria-hidden="true">
+                  <div class="day-sheet">
+                    <div class="day-sheet__head">
+                      <span class="day-sheet__day">Четверг · 26 ноября</span>
+                      <span class="day-sheet__count">3 задачи</span>
+                    </div>
+
+                    <div class="day-sheet__rows">
+                      <div class="day-sheet__row day-sheet__row--check">
+                        <span class="day-sheet__box">
+                          <svg viewBox="0 0 18 18" class="day-sheet__check-svg">
+                            <path class="day-sheet__check-path" pathLength="1" d="M3.5 9.5 L7.5 13.5 L14.5 5"/>
+                          </svg>
+                        </span>
+                        <span class="day-sheet__text day-sheet__text--strike">Собрать схему базы данных в 3НФ</span>
+                        <span class="day-sheet__tag">Бэкенд</span>
+                      </div>
+
+                      <div class="day-sheet__row day-sheet__row--marked">
+                        <span class="day-sheet__box"></span>
+                        <span class="day-sheet__marked-wrap">
+                          <span class="day-sheet__ink">Проверить мобильную версию и WCAG до 18:00</span>
+                          <span class="day-sheet__marker">Проверить мобильную версию и WCAG до 18:00</span>
+                        </span>
+                        <span class="day-sheet__tag day-sheet__tag--urgent">Сегодня</span>
+                      </div>
+
+                      <div class="day-sheet__row">
+                        <span class="day-sheet__box"></span>
+                        <span class="day-sheet__text">Подготовить 10 слайдов презентации к защите</span>
+                        <span class="day-sheet__tag">Практика</span>
+                      </div>
+                    </div>
+
+                    <div class="day-sheet__annotation">
+                      <svg class="day-sheet__arrow" viewBox="0 0 38 22">
+                        <path class="day-sheet__arrow-path" pathLength="1" d="M35 17 C24 17 14 14 7 5 M7 5 L5 12 M7 5 L14 8"/>
+                      </svg>
+                      <span class="day-sheet__note-text">главное на сегодня</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="form__group">
-              <label class="form__label" for="login-password">Пароль</label>
-              <input
-                class="form__input"
-                type="password"
-                id="login-password"
-                name="password"
-                autocomplete="current-password"
-                placeholder="Введите пароль"
-                required
-              >
-            </div>
-            <button type="submit" class="btn btn--primary btn--full" id="btn-login-submit">
-              Войти в систему
-            </button>
-          </form>
+          </section>
 
-          <form class="form" id="register-form" hidden novalidate>
-            <div class="form__group">
-              <label class="form__label" for="reg-username">Имя пользователя</label>
-              <input
-                class="form__input"
-                type="text"
-                id="reg-username"
-                name="username"
-                autocomplete="username"
-                minlength="3"
-                maxlength="50"
-                placeholder="Минимум 3 символа"
-                required
-              >
+          <!-- Chapter 2: Apple-style pinned scroll choreography -->
+          <section class="sheet__row story" id="how-it-works" aria-labelledby="story-title">
+            <p class="margin-note story__margin-note">четыре шага</p>
+            <div class="story__intro">
+              <h2 class="section-title" id="story-title">От разрозненных заметок к ясному дню</h2>
+              <p class="section-lead">
+                Прокручивайте страницу — список на глазах собирается, расставляет
+                акценты и раскладывает сложную задачу по шагам.
+              </p>
             </div>
-            <div class="form__group">
-              <label class="form__label" for="reg-email">Электронная почта</label>
-              <input
-                class="form__input"
-                type="email"
-                id="reg-email"
-                name="email"
-                autocomplete="email"
-                placeholder="name@example.com"
-                required
-              >
-            </div>
-            <div class="form__group">
-              <label class="form__label" for="reg-password">Пароль</label>
-              <input
-                class="form__input"
-                type="password"
-                id="reg-password"
-                name="password"
-                autocomplete="new-password"
-                minlength="6"
-                placeholder="Минимум 6 символов"
-                required
-              >
-            </div>
-            <button type="submit" class="btn btn--primary btn--full" id="btn-register-submit">
-              Создать аккаунт
-            </button>
-          </form>
-        </div>
-      </section>
 
-      <!-- Main application workspace -->
-      <section class="workspace" id="app-view" hidden aria-label="Рабочая область планировщика">
-        <!-- Stats summary -->
-        <section class="stats" aria-label="Сводная статистика задач">
-          <article class="stats__card">
-            <p class="stats__label">Всего задач</p>
-            <p class="stats__value" id="stat-total">0</p>
-          </article>
-          <article class="stats__card">
-            <p class="stats__label">В работе</p>
-            <p class="stats__value stats__value--accent" id="stat-active">0</p>
-          </article>
-          <article class="stats__card">
-            <p class="stats__label">Выполнено</p>
-            <p class="stats__value stats__value--success" id="stat-completed">0</p>
-          </article>
-          <article class="stats__card">
-            <p class="stats__label">Просрочено</p>
-            <p class="stats__value stats__value--danger" id="stat-overdue">0</p>
-          </article>
-        </section>
+            <div class="story__track" id="story-track">
+              <div class="story__sticky">
+                <div class="story__grid">
+                  <!-- Steps list with hand-drawn SVG active circle -->
+                  <div class="story-steps">
+                    <div class="story-steps__rail" aria-hidden="true">
+                      <div class="story-steps__rail-fill" id="story-rail-fill"></div>
+                    </div>
+                    <ol class="story-steps__list" id="story-steps-list">
+                      <li class="story-step" data-step="0" data-active="true" aria-current="step">
+                        <button type="button" class="story-step__trigger" data-jump-step="0">
+                          <span class="story-step__num">
+                            <span>1</span>
+                            <svg aria-hidden="true" viewBox="0 0 44 36" class="story-step__circle">
+                              <path pathLength="1" d="M31 5C24 2 12 3 6 9 1 15 3 25 10 30c7 5 20 4 27-1 6-5 6-14 1-20-4-4-10-6-17-5"/>
+                            </svg>
+                          </span>
+                          <span class="story-step__content">
+                            <span class="story-step__title">Соберите всё без шума</span>
+                            <span class="story-step__body">Задачи из чатов, заметок и почты ложатся в единый спокойный список.</span>
+                          </span>
+                        </button>
+                      </li>
 
-        <div class="workspace__grid">
-          <!-- Sidebar: Categories -->
-          <aside class="sidebar" aria-labelledby="categories-heading">
-            <div class="panel">
-              <div class="panel__header">
-                <h2 class="panel__title" id="categories-heading">Категории</h2>
+                      <li class="story-step" data-step="1" data-active="false">
+                        <button type="button" class="story-step__trigger" data-jump-step="1">
+                          <span class="story-step__num">
+                            <span>2</span>
+                            <svg aria-hidden="true" viewBox="0 0 44 36" class="story-step__circle">
+                              <path pathLength="1" d="M31 5C24 2 12 3 6 9 1 15 3 25 10 30c7 5 20 4 27-1 6-5 6-14 1-20-4-4-10-6-17-5"/>
+                            </svg>
+                          </span>
+                          <span class="story-step__content">
+                            <span class="story-step__title">Выделите срочное и категории</span>
+                            <span class="story-step__body">Высокий приоритет сразу поднимается наверх, а цветовые метки разделяют контекст.</span>
+                          </span>
+                        </button>
+                      </li>
+
+                      <li class="story-step" data-step="2" data-active="false">
+                        <button type="button" class="story-step__trigger" data-jump-step="2">
+                          <span class="story-step__num">
+                            <span>3</span>
+                            <svg aria-hidden="true" viewBox="0 0 44 36" class="story-step__circle">
+                              <path pathLength="1" d="M31 5C24 2 12 3 6 9 1 15 3 25 10 30c7 5 20 4 27-1 6-5 6-14 1-20-4-4-10-6-17-5"/>
+                            </svg>
+                          </span>
+                          <span class="story-step__content">
+                            <span class="story-step__title">Разбейте крупное на шаги</span>
+                            <span class="story-step__body">Каждая задача раскрывается в подзадачи — прогресс виден после каждого клика.</span>
+                          </span>
+                        </button>
+                      </li>
+
+                      <li class="story-step" data-step="3" data-active="false">
+                        <button type="button" class="story-step__trigger" data-jump-step="3">
+                          <span class="story-step__num">
+                            <span>4</span>
+                            <svg aria-hidden="true" viewBox="0 0 44 36" class="story-step__circle">
+                              <path pathLength="1" d="M31 5C24 2 12 3 6 9 1 15 3 25 10 30c7 5 20 4 27-1 6-5 6-14 1-20-4-4-10-6-17-5"/>
+                            </svg>
+                          </span>
+                          <span class="story-step__content">
+                            <span class="story-step__title">Видьте картину дня целиком</span>
+                            <span class="story-step__body">Счётчики и просрочки обновляются автоматически, не перегружая экран.</span>
+                          </span>
+                        </button>
+                      </li>
+                    </ol>
+                  </div>
+
+                  <!-- Scrubbed architectural canvas -->
+                  <div class="story-stage" id="story-stage" aria-hidden="true">
+                    <div class="story-stage__chrome">
+                      <span class="story-stage__label">Рабочий лист</span>
+                      <span class="story-stage__phase-chip" id="story-stage-chip">01 / Сбор</span>
+                    </div>
+
+                    <div class="story-stage__canvas">
+                      <!-- 4 scroll-choreographed task slips -->
+                      <div class="stage-slip" data-slip="0">
+                        <span class="stage-slip__bar stage-slip__bar--low"></span>
+                        <span class="stage-slip__dot" style="background:#0f766e"></span>
+                        <span class="stage-slip__text">Обновить README и схему запуска</span>
+                        <span class="stage-slip__meta">Работа · Пт</span>
+                      </div>
+
+                      <div class="stage-slip stage-slip--featured" data-slip="1">
+                        <div class="stage-slip__top">
+                          <span class="stage-slip__bar stage-slip__bar--high"></span>
+                          <span class="stage-slip__dot" style="background:#1a45c2"></span>
+                          <span class="stage-slip__text">Подготовить отчёт и защиту практики</span>
+                          <span class="stage-slip__priority">Высокий</span>
+                        </div>
+
+                        <div class="stage-slip__expand" id="stage-featured-expand">
+                          <div class="stage-subtask" data-sub="0">
+                            <span class="stage-subtask__box">
+                              <svg viewBox="0 0 16 16"><path pathLength="1" d="M3 8.5 L6.5 12 L13 4.5"/></svg>
+                            </span>
+                            <span class="stage-subtask__title">Оформить разделы 1–4 по ГОСТ</span>
+                          </div>
+                          <div class="stage-subtask" data-sub="1">
+                            <span class="stage-subtask__box">
+                              <svg viewBox="0 0 16 16"><path pathLength="1" d="M3 8.5 L6.5 12 L13 4.5"/></svg>
+                            </span>
+                            <span class="stage-subtask__title">Сделать скриншоты ПК и смартфона</span>
+                          </div>
+                          <div class="stage-subtask" data-sub="2">
+                            <span class="stage-subtask__box">
+                              <svg viewBox="0 0 16 16"><path pathLength="1" d="M3 8.5 L6.5 12 L13 4.5"/></svg>
+                            </span>
+                            <span class="stage-subtask__title">Прогнать pytest и Docker healthcheck</span>
+                          </div>
+                          <div class="stage-progress">
+                            <div class="stage-progress__track">
+                              <div class="stage-progress__fill" id="stage-progress-fill"></div>
+                            </div>
+                            <span class="stage-progress__pct" id="stage-progress-pct">0%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="stage-slip" data-slip="2">
+                        <span class="stage-slip__bar stage-slip__bar--med"></span>
+                        <span class="stage-slip__dot" style="background:#7e470a"></span>
+                        <span class="stage-slip__text">Проверить бэкап PostgreSQL через pg_dump</span>
+                        <span class="stage-slip__meta">Учёба · Чт</span>
+                      </div>
+
+                      <div class="stage-slip" data-slip="3">
+                        <span class="stage-slip__bar stage-slip__bar--low"></span>
+                        <span class="stage-slip__dot" style="background:#6d28d9"></span>
+                        <span class="stage-slip__text">Составить план задач на следующую неделю</span>
+                        <span class="stage-slip__meta">Личное · Вс</span>
+                      </div>
+
+                      <!-- Stage 4 summary ribbon -->
+                      <div class="stage-summary" id="stage-summary">
+                        <div class="stage-summary__ring">
+                          <svg viewBox="0 0 56 56" width="52" height="52">
+                            <circle class="stage-summary__ring-bg" cx="28" cy="28" r="22"/>
+                            <circle class="stage-summary__ring-arc" id="stage-ring-arc" cx="28" cy="28" r="22" pathLength="1"/>
+                          </svg>
+                          <span class="stage-summary__ring-num">67%</span>
+                        </div>
+                        <div class="stage-summary__stats">
+                          <div class="stage-summary__cell">
+                            <span class="stage-summary__k">Всего</span>
+                            <strong class="stage-summary__v">6</strong>
+                          </div>
+                          <div class="stage-summary__cell">
+                            <span class="stage-summary__k">В работе</span>
+                            <strong class="stage-summary__v stage-summary__v--accent">2</strong>
+                          </div>
+                          <div class="stage-summary__cell">
+                            <span class="stage-summary__k">Готово</span>
+                            <strong class="stage-summary__v stage-summary__v--ok">4</strong>
+                          </div>
+                          <div class="stage-summary__cell">
+                            <span class="stage-summary__k">Просрочено</span>
+                            <strong class="stage-summary__v">0</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Chapter 3: Tactile interactive Day-Card triage stack -->
+          <section class="sheet__row triage" id="try-demo" aria-labelledby="triage-title">
+            <p class="margin-note triage__margin-note" id="triage-margin-note">можно нажимать</p>
+            <div class="triage__grid">
+              <div class="triage__copy">
+                <h2 class="section-title" id="triage-title">Разберите три карточки прямо здесь</h2>
+                <p class="section-lead">
+                  Отметьте задачу выполненной, возьмите в фокус или отложите на завтра.
+                  Поддерживаются клик, касание и клавиши 1, 2, 3.
+                </p>
+                <p class="triage__status" id="triage-status" role="status" aria-live="polite"></p>
               </div>
 
-              <ul class="category-list" id="category-list" aria-label="Фильтр по категориям"></ul>
+              <div class="triage-deck" id="triage-deck" role="group" aria-label="Интерактивный разбор примеров задач">
+                <div class="triage-deck__stack">
+                  <span class="triage-deck__back triage-deck__back--far" aria-hidden="true"></span>
+                  <span class="triage-deck__back triage-deck__back--near" aria-hidden="true"></span>
+
+                  <article class="triage-card" id="triage-card" aria-live="polite">
+                    <div class="triage-card__head">
+                      <span class="triage-card__counter" id="triage-counter">1 из 3</span>
+                      <span class="triage-card__cat" id="triage-category"></span>
+                    </div>
+                    <div class="triage-card__body">
+                      <h3 class="triage-card__title" id="triage-card-title"></h3>
+                      <p class="triage-card__desc" id="triage-card-desc"></p>
+                    </div>
+                    <div class="triage-card__meta">
+                      <span class="triage-card__due" id="triage-card-due"></span>
+                      <span class="triage-card__sub" id="triage-card-sub"></span>
+                    </div>
+                  </article>
+
+                  <div class="triage-done" id="triage-done" hidden>
+                    <p class="triage-done__title">День разобран</p>
+                    <p class="triage-done__summary" id="triage-done-summary"></p>
+                    <div class="triage-done__actions">
+                      <button type="button" class="btn btn--secondary btn--compact" id="btn-triage-reset">
+                        Пройти ещё раз
+                      </button>
+                      <button type="button" class="btn btn--primary btn--compact" id="btn-triage-open">
+                        Открыть планировщик
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="triage-deck__controls" id="triage-controls">
+                  <button type="button" class="triage-action triage-action--done" data-triage="done" aria-keyshortcuts="1">
+                    <span class="triage-action__label">Выполнить</span>
+                    <span class="triage-action__key">1</span>
+                  </button>
+                  <button type="button" class="triage-action triage-action--focus" data-triage="focus" aria-keyshortcuts="2">
+                    <span class="triage-action__label">В фокус</span>
+                    <span class="triage-action__key">2</span>
+                  </button>
+                  <button type="button" class="triage-action triage-action--defer" data-triage="defer" aria-keyshortcuts="3">
+                    <span class="triage-action__label">На завтра</span>
+                    <span class="triage-action__key">3</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Chapter 4: Scroll-drawn weekly rhythm curve -->
+          <section class="sheet__row rhythm" id="rhythm" aria-labelledby="rhythm-title">
+            <p class="margin-note rhythm__margin-note">ровный темп</p>
+            <div class="rhythm__wrap">
+              <div class="rhythm__head">
+                <h2 class="section-title" id="rhythm-title">Ровный темп вместо аврала</h2>
+                <div class="rhythm__prose">
+                  <p>
+                    Когда задачи рассыпаны по мессенджерам, работа откладывается до последнего дня
+                    и превращается в спешку.
+                  </p>
+                  <p>
+                    Ясные сроки, три уровня приоритета и короткие подзадачи распределяют нагрузку
+                    равномерно по всей неделе.
+                  </p>
+                </div>
+              </div>
+
+              <figure class="rhythm__figure" id="rhythm-figure">
+                <div class="rhythm__legend" aria-hidden="true">
+                  <span class="rhythm__axis-title">Доля выполненных задач</span>
+                  <div class="rhythm__keys">
+                    <span class="rhythm__key">
+                      <svg viewBox="0 0 24 4" width="24" height="4"><line x1="0" y1="2" x2="24" y2="2" class="rhythm__line-chaos"/></svg>
+                      Списки в заметках
+                    </span>
+                    <span class="rhythm__key">
+                      <svg viewBox="0 0 24 4" width="24" height="4"><line x1="0" y1="2" x2="24" y2="2" class="rhythm__line-calm"/></svg>
+                      Планировщик с подзадачами
+                    </span>
+                  </div>
+                </div>
+
+                <svg class="rhythm__svg" viewBox="0 0 680 230" aria-hidden="true">
+                  <!-- Subtle horizontal grid lines -->
+                  <line x1="20" y1="30" x2="660" y2="30" class="rhythm__grid"/>
+                  <line x1="20" y1="115" x2="660" y2="115" class="rhythm__grid"/>
+                  <line x1="20" y1="200" x2="660" y2="200" class="rhythm__grid rhythm__grid--base"/>
+
+                  <!-- Chaotic curve: flat until Thursday then panic spike -->
+                  <path
+                    class="rhythm__curve rhythm__curve--chaos"
+                    d="M 24 196 C 140 194, 260 190, 390 182 C 495 174, 555 154, 656 54"
+                  />
+
+                  <!-- Calm steady curve -->
+                  <path
+                    class="rhythm__curve rhythm__curve--calm"
+                    pathLength="1"
+                    d="M 24 196 C 110 156, 175 128, 250 104 C 350 72, 480 48, 656 34"
+                  />
+
+                  <!-- Checkpoints on calm curve -->
+                  <circle class="rhythm__dot" cx="182" cy="126" r="5"/>
+                  <circle class="rhythm__dot" cx="340" cy="76" r="5"/>
+                  <circle class="rhythm__dot" cx="498" cy="48" r="5"/>
+                  <circle class="rhythm__dot rhythm__dot--end" cx="656" cy="34" r="6"/>
+                </svg>
+
+                <div class="rhythm__days" aria-hidden="true">
+                  <span>Понедельник</span>
+                  <span>Вторник</span>
+                  <span>Среда</span>
+                  <span>Четверг</span>
+                  <span>Пятница</span>
+                </div>
+
+                <figcaption class="rhythm__caption">
+                  Сравнение динамики закрытия задач в течение рабочей недели: хаотичное ведение дел
+                  в заметках приводит к скачку нагрузки в пятницу, тогда как планирование с подзадачами
+                  обеспечивает ровный прогресс с первого дня.
+                </figcaption>
+              </figure>
+            </div>
+          </section>
+
+          <!-- Chapter 5: Integrated Authentication -->
+          <section class="sheet__row auth-band" id="auth-view" aria-labelledby="auth-heading">
+            <p class="margin-note auth-band__margin-note">личный кабинет</p>
+            <div class="auth-band__grid">
+              <div class="auth-band__info">
+                <h2 class="section-title" id="auth-heading">Откройте свой рабочий лист</h2>
+                <p class="section-lead">
+                  Войдите в учётную запись или создайте новую за пару секунд — все задачи,
+                  категории и подзадачи сохраняются на сервере.
+                </p>
+                <ul class="auth-band__facts">
+                  <li>Хранение в PostgreSQL и защита токеном JWT</li>
+                  <li>Разделение по категориям, срокам и приоритетам</li>
+                  <li>Удобно на компьютере и на экране смартфона</li>
+                </ul>
+                <div class="auth-band__demo-wrap" id="auth-demo-wrap" hidden>
+                  <button type="button" class="btn btn--secondary" id="btn-auth-demo">
+                    Открыть демо без регистрации
+                  </button>
+                </div>
+              </div>
+
+              <div class="auth-card">
+                <div class="segmented" role="tablist" aria-label="Режим входа" data-active-index="0" id="auth-segmented">
+                  <span class="segmented__thumb" aria-hidden="true"></span>
+                  <button
+                    type="button"
+                    class="segmented__btn segmented__btn--active"
+                    role="tab"
+                    aria-selected="true"
+                    aria-controls="login-form"
+                    id="tab-login"
+                  >
+                    Вход
+                  </button>
+                  <button
+                    type="button"
+                    class="segmented__btn"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="register-form"
+                    id="tab-register"
+                  >
+                    Регистрация
+                  </button>
+                </div>
+
+                <div class="alert alert--error" id="auth-error" role="alert" hidden>
+                  <p class="alert__text" id="auth-error-text"></p>
+                </div>
+
+                <form class="form" id="login-form" novalidate>
+                  <div class="form__group">
+                    <label class="form__label" for="login-identifier">Логин или email</label>
+                    <input
+                      class="form__input"
+                      type="text"
+                      id="login-identifier"
+                      name="login"
+                      autocomplete="username"
+                      placeholder="alex_kovalev или alex@example.com"
+                      required
+                    >
+                  </div>
+                  <div class="form__group">
+                    <label class="form__label" for="login-password">Пароль</label>
+                    <input
+                      class="form__input"
+                      type="password"
+                      id="login-password"
+                      name="password"
+                      autocomplete="current-password"
+                      placeholder="Введите пароль"
+                      required
+                    >
+                  </div>
+                  <button type="submit" class="btn btn--primary btn--full" id="btn-login-submit">
+                    Войти в систему
+                  </button>
+                </form>
+
+                <form class="form" id="register-form" hidden novalidate>
+                  <div class="form__group">
+                    <label class="form__label" for="reg-username">Имя пользователя</label>
+                    <input
+                      class="form__input"
+                      type="text"
+                      id="reg-username"
+                      name="username"
+                      autocomplete="username"
+                      minlength="3"
+                      maxlength="50"
+                      placeholder="Минимум 3 символа"
+                      required
+                    >
+                  </div>
+                  <div class="form__group">
+                    <label class="form__label" for="reg-email">Электронная почта</label>
+                    <input
+                      class="form__input"
+                      type="email"
+                      id="reg-email"
+                      name="email"
+                      autocomplete="email"
+                      placeholder="name@example.com"
+                      required
+                    >
+                  </div>
+                  <div class="form__group">
+                    <label class="form__label" for="reg-password">Пароль</label>
+                    <input
+                      class="form__input"
+                      type="password"
+                      id="reg-password"
+                      name="password"
+                      autocomplete="new-password"
+                      minlength="6"
+                      placeholder="Минимум 6 символов"
+                      required
+                    >
+                  </div>
+                  <button type="submit" class="btn btn--primary btn--full" id="btn-register-submit">
+                    Создать аккаунт
+                  </button>
+                </form>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         VIEW 2: WORKSPACE (#app-view)
+         ================================================================ -->
+    <section class="workspace-wrap" id="app-view" hidden aria-label="Рабочая область планировщика">
+      <div class="container">
+        <div class="workspace-shell">
+          <!-- Desktop Sidebar -->
+          <aside class="ws-sidebar" aria-label="Навигация и категории">
+            <div class="ws-sidebar__section">
+              <p class="ws-sidebar__label">Представления</p>
+              <nav class="smart-nav" aria-label="Быстрые фильтры">
+                <button type="button" class="smart-nav__item smart-nav__item--active" data-smart="all" id="smart-all">
+                  <span>Все задачи</span>
+                  <span class="smart-nav__count" id="nav-count-total">0</span>
+                </button>
+                <button type="button" class="smart-nav__item" data-smart="active" id="smart-active">
+                  <span>В работе</span>
+                  <span class="smart-nav__count" id="nav-count-active">0</span>
+                </button>
+                <button type="button" class="smart-nav__item" data-smart="completed" id="smart-completed">
+                  <span>Выполнено</span>
+                  <span class="smart-nav__count" id="nav-count-completed">0</span>
+                </button>
+                <button type="button" class="smart-nav__item smart-nav__item--danger" data-smart="overdue" id="smart-overdue">
+                  <span>Просрочено</span>
+                  <span class="smart-nav__count" id="nav-count-overdue">0</span>
+                </button>
+              </nav>
+            </div>
+
+            <div class="ws-sidebar__section">
+              <p class="ws-sidebar__label" id="categories-heading">Категории</p>
+              <ul class="category-list" id="category-list" aria-labelledby="categories-heading"></ul>
 
               <form class="category-form" id="category-form" aria-label="Добавить новую категорию">
                 <div class="category-form__row">
@@ -212,57 +689,133 @@
                     class="category-form__color"
                     type="color"
                     id="new-category-color"
-                    value="#2563eb"
+                    value="#1a45c2"
                     title="Выбрать цвет категории"
                   >
                 </div>
-                <button type="submit" class="btn btn--secondary btn--full">Добавить категорию</button>
+                <button type="submit" class="btn btn--secondary btn--full btn--compact">Добавить категорию</button>
               </form>
             </div>
           </aside>
 
-          <!-- Main column: Filters & Tasks -->
-          <section class="tasks-area" aria-labelledby="tasks-heading">
-            <div class="panel">
-              <div class="panel__header panel__header--wrap">
-                <h2 class="panel__title" id="tasks-heading">Список задач</h2>
-                <button type="button" class="btn btn--primary tasks-area__mobile-add" id="btn-open-create-mobile">
-                  + Добавить задачу
-                </button>
+          <!-- Main Architectural Planner Sheet -->
+          <div class="planner-sheet">
+            <div class="planner-sheet__top">
+              <div class="ws-header">
+                <div class="ws-header__titles">
+                  <p class="ws-header__date" id="ws-date"></p>
+                  <h1 class="ws-header__title" id="ws-greeting">Рабочий лист</h1>
+                </div>
+                <div class="ws-header__right">
+                  <p class="ws-header__summary" id="ws-progress-label">0 из 0 выполнено</p>
+                  <button type="button" class="btn btn--primary ws-header__mobile-add" id="btn-open-create-mobile">
+                    <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                      <path d="M10 4v12M4 10h12"/>
+                    </svg>
+                    <span>Задача</span>
+                  </button>
+                </div>
+              </div>
+              <div class="ws-progress" aria-hidden="true">
+                <div class="ws-progress__fill" id="ws-progress-fill"></div>
+              </div>
+            </div>
+
+            <!-- Quiet hairline metric strip -->
+            <section class="metrics" aria-label="Сводная статистика задач">
+              <button type="button" class="metrics__cell" data-metric-filter="all">
+                <span class="metrics__label">Всего</span>
+                <span class="metrics__value" id="stat-total">0</span>
+              </button>
+              <button type="button" class="metrics__cell" data-metric-filter="active">
+                <span class="metrics__label">В работе</span>
+                <span class="metrics__value metrics__value--accent" id="stat-active">0</span>
+              </button>
+              <button type="button" class="metrics__cell" data-metric-filter="completed">
+                <span class="metrics__label">Выполнено</span>
+                <span class="metrics__value metrics__value--ok" id="stat-completed">0</span>
+              </button>
+              <button type="button" class="metrics__cell" data-metric-filter="overdue">
+                <span class="metrics__label">Просрочено</span>
+                <span class="metrics__value metrics__value--danger" id="stat-overdue">0</span>
+              </button>
+            </section>
+
+            <!-- Mobile horizontal category strip (tasks stay immediately visible on phones) -->
+            <section class="mobile-cats" aria-label="Категории на мобильном экране">
+              <div class="mobile-cats__strip" id="mobile-category-strip"></div>
+              <button
+                type="button"
+                class="mobile-cats__add-btn"
+                id="btn-mobile-cat-toggle"
+                aria-expanded="false"
+                aria-controls="mobile-cat-drawer"
+                aria-label="Добавить категорию"
+              >
+                +
+              </button>
+            </section>
+            <form class="mobile-cat-drawer" id="mobile-cat-drawer" hidden aria-label="Создать категорию">
+              <label class="sr-only" for="mobile-category-name">Название категории</label>
+              <input
+                class="form__input form__input--compact"
+                type="text"
+                id="mobile-category-name"
+                maxlength="60"
+                placeholder="Название категории"
+                required
+              >
+              <label class="sr-only" for="mobile-category-color">Цвет категории</label>
+              <input
+                class="category-form__color"
+                type="color"
+                id="mobile-category-color"
+                value="#1a45c2"
+                title="Цвет категории"
+              >
+              <button type="submit" class="btn btn--secondary btn--compact">Добавить</button>
+            </form>
+
+            <!-- Search & Filters Toolbar -->
+            <div class="ws-toolbar" role="search" aria-label="Поиск и фильтрация задач">
+              <div class="ws-toolbar__search-wrap">
+                <label class="sr-only" for="filter-search">Поиск задач</label>
+                <svg class="ws-toolbar__search-icon" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="9" cy="9" r="5.5"/>
+                  <path d="M13.5 13.5 L17 17"/>
+                </svg>
+                <input
+                  class="form__input ws-toolbar__search-input"
+                  type="search"
+                  id="filter-search"
+                  placeholder="Поиск задач..."
+                >
+                <kbd class="ws-toolbar__kbd" aria-hidden="true">/</kbd>
               </div>
 
-              <div class="toolbar" role="search" aria-label="Поиск и фильтрация задач">
-                <div class="toolbar__field toolbar__field--search">
-                  <label class="form__label form__label--sm" for="filter-search">Поиск</label>
-                  <input
-                    class="form__input"
-                    type="search"
-                    id="filter-search"
-                    placeholder="Поиск по названию или описанию..."
-                  >
-                </div>
-
-                <div class="toolbar__field">
-                  <label class="form__label form__label--sm" for="filter-status">Состояние</label>
+              <div class="ws-toolbar__filters">
+                <div class="ws-toolbar__field">
+                  <label class="sr-only" for="filter-status">Состояние</label>
                   <select class="form__select" id="filter-status">
-                    <option value="all">Все задачи</option>
+                    <option value="all">Все статусы</option>
                     <option value="active">Активные</option>
                     <option value="completed">Выполненные</option>
+                    <option value="overdue">Просроченные</option>
                   </select>
                 </div>
 
-                <div class="toolbar__field">
-                  <label class="form__label form__label--sm" for="filter-priority">Приоритет</label>
+                <div class="ws-toolbar__field">
+                  <label class="sr-only" for="filter-priority">Приоритет</label>
                   <select class="form__select" id="filter-priority">
-                    <option value="">Любой</option>
+                    <option value="">Приоритет</option>
                     <option value="high">Высокий</option>
                     <option value="medium">Средний</option>
                     <option value="low">Низкий</option>
                   </select>
                 </div>
 
-                <div class="toolbar__field">
-                  <label class="form__label form__label--sm" for="filter-sort">Сортировка</label>
+                <div class="ws-toolbar__field">
+                  <label class="sr-only" for="filter-sort">Сортировка</label>
                   <select class="form__select" id="filter-sort">
                     <option value="created_at">Сначала новые</option>
                     <option value="due_date">По сроку</option>
@@ -270,37 +823,49 @@
                   </select>
                 </div>
               </div>
-
-              <!-- Loading state -->
-              <div class="state-box" id="tasks-loading" aria-live="polite" hidden>
-                <div class="spinner" aria-hidden="true"></div>
-                <p class="state-box__text">Загрузка списка задач с сервера...</p>
-              </div>
-
-              <!-- Empty state -->
-              <div class="state-box" id="tasks-empty" hidden>
-                <p class="state-box__title">Задач пока нет</p>
-                <p class="state-box__text">
-                  Создайте первую задачу или измените параметры фильтрации.
-                </p>
-                <button type="button" class="btn btn--primary" id="btn-empty-create">
-                  + Создать задачу
-                </button>
-              </div>
-
-              <!-- Task cards list -->
-              <ul class="task-list" id="task-list" aria-label="Задачи пользователя"></ul>
             </div>
-          </section>
+
+            <!-- Active filter context heading -->
+            <div class="ws-list-head">
+              <h2 class="ws-list-head__title" id="tasks-heading">Все задачи</h2>
+              <button type="button" class="ws-list-head__reset" id="btn-reset-filters" hidden>
+                Сбросить фильтры
+              </button>
+            </div>
+
+            <!-- Loading skeleton state -->
+            <div class="skeleton-list" id="tasks-loading" aria-live="polite" hidden>
+              <span class="sr-only">Загрузка списка задач с сервера...</span>
+              <div class="skeleton-row" aria-hidden="true"></div>
+              <div class="skeleton-row" aria-hidden="true"></div>
+              <div class="skeleton-row" aria-hidden="true"></div>
+            </div>
+
+            <!-- Empty state -->
+            <div class="state-box" id="tasks-empty" hidden>
+              <p class="state-box__title" id="tasks-empty-title">На этом листе пока чисто</p>
+              <p class="state-box__text" id="tasks-empty-text">
+                Добавьте первую задачу или измените параметры фильтрации.
+              </p>
+              <button type="button" class="btn btn--primary" id="btn-empty-create">
+                Создать задачу
+              </button>
+            </div>
+
+            <!-- Task rows -->
+            <ul class="task-rows" id="task-list" aria-label="Задачи пользователя"></ul>
+          </div>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   </main>
 
   <footer class="footer">
     <div class="container footer__inner">
-      <p class="footer__text">Планировщик задач · Демо на GitHub Pages (локальное хранилище браузера)</p>
-      <a class="footer__link" href="https://github.com/APELSINKos/task-planner" target="_blank" rel="noopener noreferrer">Репозиторий на GitHub</a>
+      <p class="footer__text">Планировщик задач — FastAPI, PostgreSQL и Docker Compose</p>
+      <a class="footer__link" href="/docs" target="_blank" rel="noopener noreferrer" id="footer-api-link">
+        Документация API (Swagger)
+      </a>
     </div>
   </footer>
 
@@ -310,76 +875,82 @@
     <div class="modal__dialog">
       <div class="modal__header">
         <h2 class="modal__title" id="task-modal-title">Новая задача</h2>
-        <button type="button" class="icon-btn" data-close-modal="task-modal" aria-label="Закрыть окно">✕</button>
+        <button type="button" class="icon-btn" data-close-modal="task-modal" aria-label="Закрыть окно">
+          <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="M5 5l10 10M15 5L5 15"/>
+          </svg>
+        </button>
       </div>
 
-      <div class="alert alert--error" id="task-form-error" role="alert" hidden>
-        <p class="alert__text" id="task-form-error-text"></p>
+      <div class="modal__body">
+        <div class="alert alert--error" id="task-form-error" role="alert" hidden>
+          <p class="alert__text" id="task-form-error-text"></p>
+        </div>
+
+        <form class="form" id="task-form" novalidate>
+          <input type="hidden" id="task-id">
+
+          <div class="form__group">
+            <label class="form__label" for="task-title">Название задачи *</label>
+            <input
+              class="form__input"
+              type="text"
+              id="task-title"
+              maxlength="200"
+              placeholder="Например: Подготовить презентацию к защите"
+              required
+            >
+          </div>
+
+          <div class="form__group">
+            <label class="form__label" for="task-description">Описание</label>
+            <textarea
+              class="form__textarea"
+              id="task-description"
+              rows="3"
+              maxlength="2000"
+              placeholder="Подробности, заметки, критерии готовности..."
+            ></textarea>
+          </div>
+
+          <div class="form__grid">
+            <div class="form__group">
+              <label class="form__label" for="task-category">Категория</label>
+              <select class="form__select" id="task-category">
+                <option value="">Без категории</option>
+              </select>
+            </div>
+
+            <div class="form__group">
+              <label class="form__label" for="task-priority">Приоритет</label>
+              <select class="form__select" id="task-priority">
+                <option value="low">Низкий</option>
+                <option value="medium" selected>Средний</option>
+                <option value="high">Высокий</option>
+              </select>
+            </div>
+
+            <div class="form__group">
+              <label class="form__label" for="task-status">Статус</label>
+              <select class="form__select" id="task-status">
+                <option value="todo">К выполнению</option>
+                <option value="in_progress">В работе</option>
+                <option value="done">Выполнено</option>
+              </select>
+            </div>
+
+            <div class="form__group">
+              <label class="form__label" for="task-due-date">Срок выполнения</label>
+              <input class="form__input" type="date" id="task-due-date">
+            </div>
+          </div>
+
+          <div class="modal__footer">
+            <button type="button" class="btn btn--ghost" data-close-modal="task-modal">Отмена</button>
+            <button type="submit" class="btn btn--primary" id="btn-save-task">Сохранить</button>
+          </div>
+        </form>
       </div>
-
-      <form class="form" id="task-form" novalidate>
-        <input type="hidden" id="task-id">
-
-        <div class="form__group">
-          <label class="form__label" for="task-title">Название задачи *</label>
-          <input
-            class="form__input"
-            type="text"
-            id="task-title"
-            maxlength="200"
-            placeholder="Например: Подготовить презентацию к защите"
-            required
-          >
-        </div>
-
-        <div class="form__group">
-          <label class="form__label" for="task-description">Описание</label>
-          <textarea
-            class="form__textarea"
-            id="task-description"
-            rows="3"
-            maxlength="2000"
-            placeholder="Подробности, заметки, критерии готовности..."
-          ></textarea>
-        </div>
-
-        <div class="form__grid">
-          <div class="form__group">
-            <label class="form__label" for="task-category">Категория</label>
-            <select class="form__select" id="task-category">
-              <option value="">Без категории</option>
-            </select>
-          </div>
-
-          <div class="form__group">
-            <label class="form__label" for="task-priority">Приоритет</label>
-            <select class="form__select" id="task-priority">
-              <option value="low">Низкий</option>
-              <option value="medium" selected>Средний</option>
-              <option value="high">Высокий</option>
-            </select>
-          </div>
-
-          <div class="form__group">
-            <label class="form__label" for="task-status">Статус</label>
-            <select class="form__select" id="task-status">
-              <option value="todo">К выполнению</option>
-              <option value="in_progress">В работе</option>
-              <option value="done">Выполнено</option>
-            </select>
-          </div>
-
-          <div class="form__group">
-            <label class="form__label" for="task-due-date">Срок выполнения</label>
-            <input class="form__input" type="date" id="task-due-date">
-          </div>
-        </div>
-
-        <div class="modal__footer">
-          <button type="button" class="btn btn--ghost" data-close-modal="task-modal">Отмена</button>
-          <button type="submit" class="btn btn--primary" id="btn-save-task">Сохранить</button>
-        </div>
-      </form>
     </div>
   </div>
 
@@ -389,16 +960,27 @@
     <div class="modal__dialog">
       <div class="modal__header">
         <h2 class="modal__title" id="detail-modal-title">Детали задачи</h2>
-        <button type="button" class="icon-btn" data-close-modal="detail-modal" aria-label="Закрыть окно">✕</button>
+        <button type="button" class="icon-btn" data-close-modal="detail-modal" aria-label="Закрыть окно">
+          <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="M5 5l10 10M15 5L5 15"/>
+          </svg>
+        </button>
       </div>
 
-      <div class="detail-body">
+      <div class="modal__body detail-body">
         <div class="detail-meta" id="detail-badges"></div>
         <p class="detail-description" id="detail-description"></p>
         <p class="detail-dates" id="detail-dates"></p>
 
         <section class="subtasks" aria-labelledby="subtasks-heading">
-          <h3 class="subtasks__heading" id="subtasks-heading">Подзадачи</h3>
+          <div class="subtasks__head">
+            <h3 class="subtasks__heading" id="subtasks-heading">Подзадачи</h3>
+            <span class="subtasks__ratio" id="detail-subtasks-ratio"></span>
+          </div>
+          <div class="subtasks__bar" id="detail-subtasks-bar" hidden>
+            <div class="subtasks__bar-fill" id="detail-subtasks-bar-fill"></div>
+          </div>
+
           <ul class="subtask-list" id="detail-subtask-list"></ul>
           <p class="subtasks__empty" id="detail-subtasks-empty" hidden>
             Подзадач пока нет. Разбейте задачу на небольшие шаги ниже.
@@ -419,14 +1001,37 @@
         </section>
       </div>
 
-      <div class="modal__footer">
+      <div class="modal__footer modal__footer--sticky">
         <button type="button" class="btn btn--secondary" id="btn-detail-toggle">Отметить выполненной</button>
         <button type="button" class="btn btn--primary" id="btn-detail-edit">Редактировать</button>
       </div>
     </div>
   </div>
 
+  <!-- Modal: Accessible Confirmation Dialog -->
+  <div class="modal" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" hidden>
+    <div class="modal__backdrop" data-close-modal="confirm-modal"></div>
+    <div class="modal__dialog modal__dialog--narrow">
+      <div class="modal__header">
+        <h2 class="modal__title" id="confirm-modal-title">Подтвердите действие</h2>
+        <button type="button" class="icon-btn" data-close-modal="confirm-modal" aria-label="Закрыть окно">
+          <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="M5 5l10 10M15 5L5 15"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="confirm-text" id="confirm-modal-text"></p>
+      </div>
+      <div class="modal__footer">
+        <button type="button" class="btn btn--ghost" id="btn-confirm-cancel">Отмена</button>
+        <button type="button" class="btn btn--danger" id="btn-confirm-accept">Удалить</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/api.js"></script>
+  <script src="js/motion.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -30,6 +30,7 @@ task-planner/
 ├── frontend/             # Адаптивный веб-интерфейс и конфигурация Nginx
 │   ├── css/styles.css
 │   ├── js/api.js         # Клиент REST API (Fetch API + Bearer JWT)
+│   ├── js/motion.js      # Скролл-анимация обзора, интерактивные карточки и переключение темы
 │   ├── js/app.js         # Логика экрана входа, задач, категорий и подзадач
 │   ├── icons/
 │   ├── index.html
