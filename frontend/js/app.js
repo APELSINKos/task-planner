@@ -690,6 +690,11 @@ function renderCategories() {
     el.taskCategory.appendChild(opt);
   }
   el.taskCategory.value = currentVal;
+
+  const activeMobilePill = el.mobileCategoryStrip.querySelector(".cat-pill--active");
+  if (activeMobilePill && typeof activeMobilePill.scrollIntoView === "function") {
+    activeMobilePill.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
 }
 
 function createChip(text, modifier = "", dotColor = null) {
@@ -879,6 +884,7 @@ async function loadTasks() {
 
 function openTaskModal(task = null) {
   state.taskModalSessionSeq += 1;
+  if (el.btnSaveTask) el.btnSaveTask.disabled = false;
   el.taskFormError.hidden = true;
   el.taskForm.reset();
   renderCategories();
@@ -960,18 +966,31 @@ async function handleSaveTask(event) {
       el.taskFormError.hidden = false;
     }
   } finally {
-    if (el.btnSaveTask) el.btnSaveTask.disabled = false;
+    if (el.btnSaveTask && saveModalSeq === state.taskModalSessionSeq) {
+      el.btnSaveTask.disabled = false;
+    }
   }
 }
 
 async function handleToggleTask(taskId, checkboxEl = null) {
   const restoreCheckFocus = Boolean(checkboxEl && document.activeElement === checkboxEl);
+  const prevIdx = state.tasks.findIndex((t) => t.id === taskId);
   try {
     await api.toggleTask(taskId);
     await loadTasks();
     if (restoreCheckFocus) {
       const rebuilt = el.taskList.querySelector(`[data-task-check="${taskId}"]`);
-      if (rebuilt) rebuilt.focus({ preventScroll: true });
+      if (rebuilt) {
+        rebuilt.focus({ preventScroll: true });
+      } else {
+        const remaining = el.taskList.querySelectorAll("[data-task-check]");
+        if (remaining.length > 0) {
+          const fallbackIdx = Math.max(0, Math.min(prevIdx, remaining.length - 1));
+          remaining[fallbackIdx].focus({ preventScroll: true });
+        } else if (el.btnEmptyCreate && !el.tasksEmpty.hidden) {
+          el.btnEmptyCreate.focus({ preventScroll: true });
+        }
+      }
     }
     if (state.activeDetailTaskId === taskId && !el.detailModal.hidden) {
       await renderDetailTask(taskId);
@@ -1086,7 +1105,7 @@ async function renderDetailTask(taskId, expectedSeq = null) {
     el.detailSubtasksBar.hidden = false;
     el.detailSubtasksBarFill.style.transform = `scaleX(${(doneCount / subtasks.length).toFixed(4)})`;
 
-    for (const sub of subtasks) {
+    subtasks.forEach((sub, subIdx) => {
       const li = document.createElement("li");
       li.className = "subtask-list__item";
 
@@ -1101,8 +1120,8 @@ async function renderDetailTask(taskId, expectedSeq = null) {
           try {
             await api.toggleSubtask(sub.id);
             if (state.activeDetailTaskId === task.id && !el.detailModal.hidden) {
-              await renderDetailTask(task.id);
-              if (hadFocus) {
+              const rendered = await renderDetailTask(task.id);
+              if (rendered && hadFocus) {
                 const rebuilt = el.detailSubtaskList.querySelector(`[data-subtask-check="${sub.id}"]`);
                 if (rebuilt) rebuilt.focus({ preventScroll: true });
               }
@@ -1124,13 +1143,24 @@ async function renderDetailTask(taskId, expectedSeq = null) {
       const delBtn = document.createElement("button");
       delBtn.type = "button";
       delBtn.className = "icon-btn icon-btn--quiet";
+      delBtn.dataset.subtaskDel = String(sub.id);
       delBtn.textContent = "×";
       delBtn.setAttribute("aria-label", `Удалить подзадачу ${sub.title}`);
       delBtn.addEventListener("click", async () => {
+        const hadFocus = document.activeElement === delBtn;
         try {
           await api.deleteSubtask(sub.id);
           if (state.activeDetailTaskId === task.id && !el.detailModal.hidden) {
-            await renderDetailTask(task.id);
+            const rendered = await renderDetailTask(task.id);
+            if (rendered && hadFocus) {
+              const remainingBtns = el.detailSubtaskList.querySelectorAll("[data-subtask-del]");
+              if (remainingBtns.length > 0) {
+                const nextBtn = remainingBtns[Math.min(subIdx, remainingBtns.length - 1)];
+                nextBtn.focus({ preventScroll: true });
+              } else if (el.newSubtaskTitle) {
+                el.newSubtaskTitle.focus({ preventScroll: true });
+              }
+            }
           }
           await loadTasks();
         } catch (err) {
@@ -1141,7 +1171,7 @@ async function renderDetailTask(taskId, expectedSeq = null) {
       li.appendChild(label);
       li.appendChild(delBtn);
       el.detailSubtaskList.appendChild(li);
-    }
+    });
   }
   return true;
 }
@@ -1479,9 +1509,22 @@ function bindEvents() {
 
     const activeEl = document.activeElement;
     const isHiddenEl = activeEl instanceof HTMLElement && Boolean(activeEl.closest("[hidden]"));
+    const nonTextInputTypes = new Set([
+      "checkbox",
+      "radio",
+      "button",
+      "submit",
+      "reset",
+      "color",
+      "file",
+      "range",
+    ]);
+    const isTextInput =
+      activeEl instanceof HTMLInputElement &&
+      !nonTextInputTypes.has((activeEl.type || "text").toLowerCase());
     const inTextField =
       !isHiddenEl &&
-      (activeEl instanceof HTMLInputElement ||
+      (isTextInput ||
         activeEl instanceof HTMLTextAreaElement ||
         activeEl instanceof HTMLSelectElement ||
         (activeEl instanceof HTMLElement && activeEl.isContentEditable));

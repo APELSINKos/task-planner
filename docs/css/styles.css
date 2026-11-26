@@ -1711,7 +1711,7 @@ code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0.45rem 0.9rem;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border-strong);
@@ -1857,7 +1857,7 @@ code {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  min-height: 40px;
+  min-height: 44px;
   cursor: pointer;
 }
 
@@ -1975,8 +1975,14 @@ code {
 .auth-photo {
   border-radius: var(--radius-lg);
   overflow: hidden;
-  aspect-ratio: 16 / 9.5;
+  aspect-ratio: 4 / 3;
   background: var(--surface-2);
+}
+
+@media (min-width: 900px) {
+  .auth-photo {
+    aspect-ratio: 16 / 11;
+  }
 }
 
 .auth-photo__img {
@@ -1984,7 +1990,7 @@ code {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  object-position: center 44%;
   outline: 1px solid var(--img-outline);
   outline-offset: -1px;
 }
@@ -2078,7 +2084,7 @@ code {
 }
 
 .segmented__btn {
-  min-height: 42px;
+  min-height: 44px;
   border: 0;
   background: transparent;
   color: var(--text-secondary);
@@ -2314,9 +2320,12 @@ code {
 .smart-nav__count {
   font-size: 0.82rem;
   font-weight: 600;
-  color: inherit;
-  opacity: 0.82;
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.smart-nav__item--active .smart-nav__count {
+  color: inherit;
 }
 
 /* Category list */
@@ -2871,7 +2880,7 @@ code {
 }
 
 .ws-list-head__reset {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0.35rem 0.7rem;
   border: 0;
   border-radius: var(--radius-xs);
@@ -2901,9 +2910,9 @@ code {
 }
 
 .ink-check--sm {
-  width: 38px;
-  height: 38px;
-  margin: -8px 0 -8px -8px;
+  width: 44px;
+  height: 44px;
+  margin: -11px 0 -11px -11px;
 }
 
 .ink-check__input {
@@ -3304,6 +3313,58 @@ code {
   margin-top: 0;
   padding: 1rem 1.35rem;
   background: var(--surface);
+}
+
+@media (max-width: 519px) {
+  .modal {
+    padding: 0.65rem;
+  }
+
+  .modal__dialog {
+    max-height: min(92vh, 760px);
+  }
+
+  .modal__header {
+    padding: 0.95rem 1.05rem 0.8rem;
+  }
+
+  .modal__title {
+    font-size: 1.08rem;
+  }
+
+  .modal__body {
+    padding: 0.9rem 1.05rem;
+  }
+
+  .detail-body {
+    gap: 0.72rem;
+  }
+
+  .subtasks {
+    padding-top: 0.75rem;
+  }
+
+  .subtask-list {
+    margin-bottom: 0.65rem;
+    gap: 0.35rem;
+  }
+
+  .subtask-list__item {
+    padding: 0.42rem 0.5rem 0.42rem 0.7rem;
+  }
+
+  .modal__footer--sticky {
+    padding: 0.75rem 1.05rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem;
+  }
+
+  .modal__footer--sticky .btn {
+    width: 100%;
+    padding: 0.5rem 0.72rem;
+    font-size: 0.85rem;
+  }
 }
 
 .confirm-text {

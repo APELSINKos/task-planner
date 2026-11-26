@@ -398,6 +398,7 @@ function initScrollStory() {
   return {
     refresh: () => {
       if (reduceMotion) {
+        updateReadingProgress();
         renderStory(reducedProgress);
         updateHeroDepth();
       } else {
