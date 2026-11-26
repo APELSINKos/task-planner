@@ -96,8 +96,10 @@ const el = {
   mobileCategoryStrip: document.getElementById("mobile-category-strip"),
   btnMobileCatToggle: document.getElementById("btn-mobile-cat-toggle"),
   mobileCatDrawer: document.getElementById("mobile-cat-drawer"),
+  mobileCategoryForm: document.getElementById("mobile-category-form"),
   mobileCategoryName: document.getElementById("mobile-category-name"),
   mobileCategoryColor: document.getElementById("mobile-category-color"),
+  mobileCategoryManageList: document.getElementById("mobile-category-manage-list"),
 
   filterSearch: document.getElementById("filter-search"),
   filterStatus: document.getElementById("filter-status"),
@@ -214,16 +216,21 @@ function createInkCheckbox(checked, ariaLabel, onChange) {
   return { wrap, input };
 }
 
-function setAuthTab(mode) {
+function setAuthTab(mode, focusTab = false) {
   const isLogin = mode === "login";
   el.authSegmented.setAttribute("data-active-index", isLogin ? "0" : "1");
   el.tabLogin.classList.toggle("segmented__btn--active", isLogin);
   el.tabRegister.classList.toggle("segmented__btn--active", !isLogin);
   el.tabLogin.setAttribute("aria-selected", String(isLogin));
   el.tabRegister.setAttribute("aria-selected", String(!isLogin));
+  el.tabLogin.setAttribute("tabindex", isLogin ? "0" : "-1");
+  el.tabRegister.setAttribute("tabindex", isLogin ? "-1" : "0");
   el.loginForm.hidden = !isLogin;
   el.registerForm.hidden = isLogin;
   hideAuthError();
+  if (focusTab) {
+    (isLogin ? el.tabLogin : el.tabRegister).focus();
+  }
 }
 
 function scrollToAuth() {
@@ -302,8 +309,28 @@ function handleApiError(err, fallbackMessage = "Произошла ошибка"
   showGlobalError(err?.message || fallbackMessage);
 }
 
+const modalReturnFocus = new WeakMap();
+
+function getTopOpenModal() {
+  if (!el.confirmModal.hidden) return el.confirmModal;
+  if (!el.taskModal.hidden) return el.taskModal;
+  if (!el.detailModal.hidden) return el.detailModal;
+  return null;
+}
+
+function getFocusableElements(container) {
+  const selector =
+    'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  return Array.from(container.querySelectorAll(selector)).filter((node) => {
+    if (node.closest("[hidden]")) return false;
+    const style = window.getComputedStyle(node);
+    return style.display !== "none" && style.visibility !== "hidden";
+  });
+}
+
 function openModal(modalElement) {
   if (document.activeElement instanceof HTMLElement && !modalElement.contains(document.activeElement)) {
+    modalReturnFocus.set(modalElement, document.activeElement);
     state.lastFocusedElement = document.activeElement;
   }
   modalElement.hidden = false;
@@ -320,12 +347,15 @@ function closeModal(modalElement) {
     resolve(false);
   }
 
+  const returnTarget = modalReturnFocus.get(modalElement) || state.lastFocusedElement;
+  modalReturnFocus.delete(modalElement);
+
   if (el.taskModal.hidden && el.detailModal.hidden && el.confirmModal.hidden) {
     document.body.style.overflow = "";
-    if (state.lastFocusedElement && document.contains(state.lastFocusedElement)) {
-      state.lastFocusedElement.focus();
-      state.lastFocusedElement = null;
-    }
+    state.lastFocusedElement = null;
+  }
+  if (returnTarget && document.contains(returnTarget)) {
+    returnTarget.focus();
   }
 }
 
@@ -438,8 +468,12 @@ function renderCategories() {
   allItem.appendChild(allBtn);
   el.categoryList.appendChild(allItem);
 
-  // Mobile horizontal strip
+  // Mobile horizontal strip & mobile drawer manage list
   el.mobileCategoryStrip.innerHTML = "";
+  if (el.mobileCategoryManageList) {
+    el.mobileCategoryManageList.innerHTML = "";
+    el.mobileCategoryManageList.hidden = state.categories.length === 0;
+  }
   const allPill = document.createElement("button");
   allPill.type = "button";
   allPill.className = `cat-pill ${state.selectedCategoryId === null ? "cat-pill--active" : ""}`;
@@ -507,6 +541,28 @@ function renderCategories() {
       loadTasks();
     });
     el.mobileCategoryStrip.appendChild(pill);
+
+    // Mobile drawer delete item
+    if (el.mobileCategoryManageList) {
+      const mLi = document.createElement("li");
+      mLi.className = "mobile-cat-drawer__item";
+      const mDot = document.createElement("span");
+      mDot.className = "category-list__dot";
+      mDot.style.backgroundColor = cat.color;
+      mDot.setAttribute("aria-hidden", "true");
+      const mName = document.createElement("span");
+      mName.textContent = cat.name;
+      const mDel = document.createElement("button");
+      mDel.type = "button";
+      mDel.className = "icon-btn icon-btn--quiet mobile-cat-drawer__del";
+      mDel.textContent = "×";
+      mDel.setAttribute("aria-label", `Удалить категорию ${cat.name}`);
+      mDel.addEventListener("click", () => handleDeleteCategory(cat));
+      mLi.appendChild(mDot);
+      mLi.appendChild(mName);
+      mLi.appendChild(mDel);
+      el.mobileCategoryManageList.appendChild(mLi);
+    }
   }
 
   // Sync category options inside task modal select
@@ -969,6 +1025,19 @@ async function enterDemoWorkspace() {
 function bindEvents() {
   el.tabLogin.addEventListener("click", () => setAuthTab("login"));
   el.tabRegister.addEventListener("click", () => setAuthTab("register"));
+  el.authSegmented.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      const next = el.loginForm.hidden ? "login" : "register";
+      setAuthTab(next, true);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setAuthTab("login", true);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setAuthTab("register", true);
+    }
+  });
 
   el.brandLink.addEventListener("click", (event) => {
     if (state.user) {
@@ -1102,7 +1171,7 @@ function bindEvents() {
     if (willShow) el.mobileCategoryName.focus();
   });
 
-  el.mobileCatDrawer.addEventListener("submit", (event) => {
+  el.mobileCategoryForm.addEventListener("submit", (event) => {
     event.preventDefault();
     submitNewCategory(el.mobileCategoryName, el.mobileCategoryColor, () => {
       el.mobileCatDrawer.hidden = true;
@@ -1193,13 +1262,30 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
+    const activeModal = getTopOpenModal();
     if (event.key === "Escape") {
-      if (!el.confirmModal.hidden) {
-        closeModal(el.confirmModal);
-      } else if (!el.taskModal.hidden) {
-        closeModal(el.taskModal);
-      } else if (!el.detailModal.hidden) {
-        closeModal(el.detailModal);
+      if (activeModal) {
+        closeModal(activeModal);
+      }
+      return;
+    }
+
+    if (event.key === "Tab" && activeModal) {
+      const focusables = getFocusableElements(activeModal);
+      if (focusables.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey) {
+        if (document.activeElement === first || !activeModal.contains(document.activeElement)) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (document.activeElement === last || !activeModal.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
       }
       return;
     }
@@ -1208,9 +1294,7 @@ function bindEvents() {
     if (
       event.key === "/" &&
       !el.appView.hidden &&
-      el.taskModal.hidden &&
-      el.detailModal.hidden &&
-      el.confirmModal.hidden &&
+      !activeModal &&
       !(document.activeElement instanceof HTMLInputElement) &&
       !(document.activeElement instanceof HTMLTextAreaElement) &&
       !(document.activeElement instanceof HTMLSelectElement)

@@ -12,10 +12,17 @@ class ApiError extends Error {
   }
 }
 
-function _todayOffset(days) {
+function _localIsoDate(days = 0) {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function _todayOffset(days) {
+  return _localIsoDate(days);
 }
 
 function _loadStore() {
@@ -141,7 +148,7 @@ function _saveStore(store) {
 }
 
 function _hydrateTask(store, task) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = _localIsoDate(0);
   const category = store.categories.find((c) => c.id === task.category_id) || null;
   return {
     ...task,

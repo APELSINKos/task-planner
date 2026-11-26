@@ -483,9 +483,9 @@
                   />
 
                   <!-- Checkpoints on calm curve -->
-                  <circle class="rhythm__dot" cx="182" cy="126" r="5"/>
-                  <circle class="rhythm__dot" cx="340" cy="76" r="5"/>
-                  <circle class="rhythm__dot" cx="498" cy="48" r="5"/>
+                  <circle class="rhythm__dot" cx="182" cy="127.8" r="5"/>
+                  <circle class="rhythm__dot" cx="340" cy="79.4" r="5"/>
+                  <circle class="rhythm__dot" cx="498" cy="50.8" r="5"/>
                   <circle class="rhythm__dot rhythm__dot--end" cx="656" cy="34" r="6"/>
                 </svg>
 
@@ -529,35 +529,39 @@
               </div>
 
               <div class="auth-card">
-                <div class="segmented" role="tablist" aria-label="Режим входа" data-active-index="0" id="auth-segmented">
+                <div class="segmented" data-active-index="0" id="auth-segmented">
                   <span class="segmented__thumb" aria-hidden="true"></span>
-                  <button
-                    type="button"
-                    class="segmented__btn segmented__btn--active"
-                    role="tab"
-                    aria-selected="true"
-                    aria-controls="login-form"
-                    id="tab-login"
-                  >
-                    Вход
-                  </button>
-                  <button
-                    type="button"
-                    class="segmented__btn"
-                    role="tab"
-                    aria-selected="false"
-                    aria-controls="register-form"
-                    id="tab-register"
-                  >
-                    Регистрация
-                  </button>
+                  <div class="segmented__tabs" role="tablist" aria-label="Режим входа">
+                    <button
+                      type="button"
+                      class="segmented__btn segmented__btn--active"
+                      role="tab"
+                      aria-selected="true"
+                      aria-controls="login-form"
+                      tabindex="0"
+                      id="tab-login"
+                    >
+                      Вход
+                    </button>
+                    <button
+                      type="button"
+                      class="segmented__btn"
+                      role="tab"
+                      aria-selected="false"
+                      aria-controls="register-form"
+                      tabindex="-1"
+                      id="tab-register"
+                    >
+                      Регистрация
+                    </button>
+                  </div>
                 </div>
 
                 <div class="alert alert--error" id="auth-error" role="alert" hidden>
                   <p class="alert__text" id="auth-error-text"></p>
                 </div>
 
-                <form class="form" id="login-form" novalidate>
+                <form class="form" id="login-form" role="tabpanel" aria-labelledby="tab-login" novalidate>
                   <div class="form__group">
                     <label class="form__label" for="login-identifier">Логин или email</label>
                     <input
@@ -587,7 +591,7 @@
                   </button>
                 </form>
 
-                <form class="form" id="register-form" hidden novalidate>
+                <form class="form" id="register-form" role="tabpanel" aria-labelledby="tab-register" hidden novalidate>
                   <div class="form__group">
                     <label class="form__label" for="reg-username">Имя пользователя</label>
                     <input
@@ -750,31 +754,35 @@
                 id="btn-mobile-cat-toggle"
                 aria-expanded="false"
                 aria-controls="mobile-cat-drawer"
-                aria-label="Добавить категорию"
+                aria-label="Управление категориями"
+                title="Добавить или удалить категорию"
               >
                 +
               </button>
             </section>
-            <form class="mobile-cat-drawer" id="mobile-cat-drawer" hidden aria-label="Создать категорию">
-              <label class="sr-only" for="mobile-category-name">Название категории</label>
-              <input
-                class="form__input form__input--compact"
-                type="text"
-                id="mobile-category-name"
-                maxlength="60"
-                placeholder="Название категории"
-                required
-              >
-              <label class="sr-only" for="mobile-category-color">Цвет категории</label>
-              <input
-                class="category-form__color"
-                type="color"
-                id="mobile-category-color"
-                value="#1a45c2"
-                title="Цвет категории"
-              >
-              <button type="submit" class="btn btn--secondary btn--compact">Добавить</button>
-            </form>
+            <div class="mobile-cat-drawer" id="mobile-cat-drawer" hidden>
+              <form class="mobile-cat-drawer__form" id="mobile-category-form" aria-label="Создать категорию">
+                <label class="sr-only" for="mobile-category-name">Название категории</label>
+                <input
+                  class="form__input form__input--compact"
+                  type="text"
+                  id="mobile-category-name"
+                  maxlength="60"
+                  placeholder="Название категории"
+                  required
+                >
+                <label class="sr-only" for="mobile-category-color">Цвет категории</label>
+                <input
+                  class="category-form__color"
+                  type="color"
+                  id="mobile-category-color"
+                  value="#1a45c2"
+                  title="Цвет категории"
+                >
+                <button type="submit" class="btn btn--secondary btn--compact">Добавить</button>
+              </form>
+              <ul class="mobile-cat-drawer__list" id="mobile-category-manage-list" aria-label="Удаление категорий"></ul>
+            </div>
 
             <!-- Search & Filters Toolbar -->
             <div class="ws-toolbar" role="search" aria-label="Поиск и фильтрация задач">

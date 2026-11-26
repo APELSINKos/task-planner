@@ -133,10 +133,12 @@ function initScrollStory() {
   const subNodes = Array.from(track.querySelectorAll(".stage-subtask"));
 
   const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const stackedStepsQuery = window.matchMedia("(max-width: 1023px), (max-height: 700px)");
   let reduceMotion = reduceMotionQuery.matches;
 
   let targetProgress = 0;
   let currentProgress = 0;
+  let reducedProgress = 1;
   let rafId = null;
   let activeStepIndex = -1;
 
@@ -148,6 +150,21 @@ function initScrollStory() {
   ];
   const ALIGNED_Y = [8, 66, 124, 182];
   const SORTED_Y = [66, 8, 124, 182]; // Slip 1 (high priority) rises to slot 0
+
+  function syncStepFocusability() {
+    const isStacked = !reduceMotion && stackedStepsQuery.matches;
+    steps.forEach((stepEl, i) => {
+      const btn = stepEl.querySelector(".story-step__trigger");
+      const hiddenInStack = isStacked && i !== activeStepIndex;
+      if (hiddenInStack) {
+        stepEl.setAttribute("aria-hidden", "true");
+        if (btn) btn.setAttribute("tabindex", "-1");
+      } else {
+        stepEl.removeAttribute("aria-hidden");
+        if (btn) btn.setAttribute("tabindex", "0");
+      }
+    });
+  }
 
   function setActiveStep(idx) {
     if (idx === activeStepIndex) return;
@@ -161,6 +178,7 @@ function initScrollStory() {
         stepEl.removeAttribute("aria-current");
       }
     });
+    syncStepFocusability();
     if (phaseChip) {
       phaseChip.textContent = PHASE_LABELS[idx] || PHASE_LABELS[0];
     }
@@ -212,7 +230,8 @@ function initScrollStory() {
     });
 
     if (expandBox) {
-      expandBox.style.maxHeight = `${Math.round(lerp(0, 156, tExpand))}px`;
+      const fullHeight = Math.max(156, expandBox.scrollHeight + 12);
+      expandBox.style.maxHeight = tExpand >= 0.995 ? `${fullHeight}px` : `${Math.round(lerp(0, fullHeight, tExpand))}px`;
       expandBox.style.opacity = tExpand.toFixed(3);
       expandBox.style.marginTop = `${(tExpand * 10).toFixed(1)}px`;
       expandBox.style.paddingTop = `${(tExpand * 8).toFixed(1)}px`;
@@ -265,13 +284,15 @@ function initScrollStory() {
     updateReadingProgress();
     if (landingView && landingView.hidden) return;
     if (reduceMotion) {
-      renderStory(1);
+      renderStory(reducedProgress);
+      syncStepFocusability();
       return;
     }
     const rect = track.getBoundingClientRect();
     const stickyTop = 64;
     const scrollable = Math.max(1, track.offsetHeight - (window.innerHeight - stickyTop));
     targetProgress = clamp01((stickyTop - rect.top) / scrollable);
+    syncStepFocusability();
 
     if (rafId === null) {
       rafId = requestAnimationFrame(tick);
@@ -291,12 +312,15 @@ function initScrollStory() {
     rafId = requestAnimationFrame(tick);
   }
 
-  // Click step buttons to smoothly glide to that stage
+  // Click step buttons to smoothly glide to that stage (or inspect stage directly under reduced motion)
   track.querySelectorAll("[data-jump-step]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const idx = Number(btn.getAttribute("data-jump-step"));
       if (reduceMotion) {
-        setActiveStep(idx);
+        reducedProgress = STEP_TARGETS[idx] ?? 1;
+        currentProgress = reducedProgress;
+        targetProgress = reducedProgress;
+        renderStory(reducedProgress);
         return;
       }
       const stickyTop = 64;
@@ -310,13 +334,18 @@ function initScrollStory() {
   window.addEventListener("scroll", computeTarget, { passive: true });
   window.addEventListener("resize", computeTarget, { passive: true });
 
+  if (stackedStepsQuery.addEventListener) {
+    stackedStepsQuery.addEventListener("change", syncStepFocusability);
+  }
+
   if (reduceMotionQuery.addEventListener) {
     reduceMotionQuery.addEventListener("change", (ev) => {
       reduceMotion = ev.matches;
       if (reduceMotion) {
-        currentProgress = 1;
-        targetProgress = 1;
-        renderStory(1);
+        currentProgress = reducedProgress;
+        targetProgress = reducedProgress;
+        renderStory(reducedProgress);
+        syncStepFocusability();
       } else {
         computeTarget();
       }
@@ -325,8 +354,9 @@ function initScrollStory() {
 
   // Initial render
   if (reduceMotion) {
-    currentProgress = 1;
-    renderStory(1);
+    currentProgress = reducedProgress;
+    renderStory(reducedProgress);
+    syncStepFocusability();
   } else {
     currentProgress = 0;
     renderStory(0);
@@ -336,7 +366,8 @@ function initScrollStory() {
   return {
     refresh: () => {
       if (reduceMotion) {
-        renderStory(1);
+        renderStory(reducedProgress);
+        syncStepFocusability();
       } else {
         computeTarget();
       }
@@ -348,6 +379,8 @@ function initScrollStory() {
    INTERACTIVE DAY-CARD TRIAGE STACK
    ============================================================================ */
 function initTriageDemo() {
+  const section = document.getElementById("try-demo");
+  const landingView = document.getElementById("landing-view");
   const deck = document.getElementById("triage-deck");
   const card = document.getElementById("triage-card");
   const doneBox = document.getElementById("triage-done");
@@ -362,6 +395,7 @@ function initTriageDemo() {
   const marginNote = document.getElementById("triage-margin-note");
   const doneSummary = document.getElementById("triage-done-summary");
   const resetBtn = document.getElementById("btn-triage-reset");
+  const openBtn = document.getElementById("btn-triage-open");
 
   if (!deck || !card) return;
 
@@ -370,13 +404,16 @@ function initTriageDemo() {
   const counts = { done: 0, focus: 0, defer: 0 };
   const reduceMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  function renderCard() {
+  function renderCard(restoreFocusOnDone = false) {
     if (index >= TRIAGE_SAMPLES.length) {
       card.hidden = true;
       doneBox.hidden = false;
       controls.hidden = true;
       doneSummary.textContent = `Выполнено: ${counts.done} · В фокусе: ${counts.focus} · На завтра: ${counts.defer}`;
       if (marginNote) marginNote.textContent = "список разобран";
+      if (restoreFocusOnDone && (openBtn || resetBtn)) {
+        (openBtn || resetBtn).focus();
+      }
       return;
     }
 
@@ -402,6 +439,7 @@ function initTriageDemo() {
 
   function handleAction(action) {
     if (busy || index >= TRIAGE_SAMPLES.length) return;
+    const focusWasInControls = controls.contains(document.activeElement);
     counts[action] += 1;
 
     const messages = {
@@ -417,18 +455,19 @@ function initTriageDemo() {
 
     if (reduceMotion()) {
       index += 1;
-      renderCard();
+      renderCard(focusWasInControls);
       return;
     }
 
     busy = true;
+    card.style.transform = "";
     const exitClass = action === "done" ? "triage-card--exit-right" : "triage-card--exit-left";
     card.classList.add(exitClass);
 
     setTimeout(() => {
       index += 1;
       card.classList.remove(exitClass);
-      renderCard();
+      renderCard(focusWasInControls);
 
       if (index < TRIAGE_SAMPLES.length) {
         card.classList.add("triage-card--enter");
@@ -448,18 +487,87 @@ function initTriageDemo() {
     btn.addEventListener("click", () => handleAction(btn.getAttribute("data-triage")));
   });
 
-  deck.addEventListener("keydown", (event) => {
-    if (event.altKey || event.ctrlKey || event.metaKey) return;
-    if (event.key === "1") {
-      event.preventDefault();
-      handleAction("done");
-    } else if (event.key === "2") {
-      event.preventDefault();
-      handleAction("focus");
-    } else if (event.key === "3") {
-      event.preventDefault();
-      handleAction("defer");
+  // Pointer/touch horizontal swipe on the active card
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragDx = 0;
+  let dragging = false;
+  let pointerId = null;
+
+  card.addEventListener("pointerdown", (event) => {
+    if (busy || reduceMotion() || event.button > 0) return;
+    pointerId = event.pointerId;
+    dragStartX = event.clientX;
+    dragStartY = event.clientY;
+    dragDx = 0;
+    dragging = false;
+  });
+
+  card.addEventListener("pointermove", (event) => {
+    if (pointerId !== event.pointerId || busy) return;
+    const dx = event.clientX - dragStartX;
+    const dy = event.clientY - dragStartY;
+    if (!dragging) {
+      if (Math.abs(dx) < 10 || Math.abs(dy) > Math.abs(dx)) return;
+      dragging = true;
+      card.classList.add("triage-card--dragging");
+      try {
+        card.setPointerCapture(event.pointerId);
+      } catch (_e) {}
     }
+    dragDx = dx;
+    const rot = Math.max(-8, Math.min(8, dx * 0.05));
+    card.style.transform = `translate3d(${dx.toFixed(1)}px, 0, 0) rotate(${rot.toFixed(2)}deg)`;
+  });
+
+  function finishDrag(event) {
+    if (pointerId !== event.pointerId) return;
+    const wasDragging = dragging;
+    const finalDx = dragDx;
+    pointerId = null;
+    dragging = false;
+    dragDx = 0;
+    card.classList.remove("triage-card--dragging");
+    if (!wasDragging) return;
+    if (finalDx >= 64) {
+      handleAction("done");
+    } else if (finalDx <= -64) {
+      handleAction("defer");
+    } else {
+      card.style.transform = "";
+    }
+  }
+
+  card.addEventListener("pointerup", finishDrag);
+  card.addEventListener("pointercancel", finishDrag);
+
+  // Support keys 1, 2, 3 whenever triage section is visible or focused (and no input/modal is active)
+  document.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key !== "1" && event.key !== "2" && event.key !== "3") return;
+    if (landingView && landingView.hidden) return;
+    if (document.querySelector(".modal:not([hidden])")) return;
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      active instanceof HTMLSelectElement ||
+      (active instanceof HTMLElement && active.isContentEditable)
+    ) {
+      return;
+    }
+    const inDeck = deck.contains(active);
+    let inViewport = false;
+    if (section) {
+      const rect = section.getBoundingClientRect();
+      inViewport = rect.top < window.innerHeight * 0.85 && rect.bottom > 80;
+    }
+    if (!inDeck && !inViewport) return;
+
+    event.preventDefault();
+    if (event.key === "1") handleAction("done");
+    else if (event.key === "2") handleAction("focus");
+    else if (event.key === "3") handleAction("defer");
   });
 
   if (resetBtn) {
@@ -471,6 +579,8 @@ function initTriageDemo() {
       if (statusEl) statusEl.textContent = "";
       if (marginNote) marginNote.textContent = "можно нажимать";
       renderCard();
+      const firstAction = controls.querySelector("[data-triage]");
+      if (firstAction) firstAction.focus();
     });
   }
 
