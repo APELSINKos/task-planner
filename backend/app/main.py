@@ -6,6 +6,7 @@ from datetime import date
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import case, func, or_, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import create_access_token, get_current_user, hash_password, verify_password
@@ -118,7 +119,14 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     for cat_name, cat_color in DEFAULT_CATEGORIES:
         db.add(Category(user_id=user.id, name=cat_name, color=cat_color))
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Пользователь с таким именем или email уже существует",
+        )
     db.refresh(user)
 
     token = create_access_token(user.id)
@@ -181,7 +189,14 @@ def create_category(
 
     category = Category(user_id=current_user.id, name=payload.name, color=payload.color)
     db.add(category)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Категория с таким названием уже существует",
+        )
     db.refresh(category)
     return category
 
@@ -287,8 +302,14 @@ def list_tasks(
     if search:
         term = search.strip()
         if term:
-            pattern = f"%{term}%"
-            stmt = stmt.where(or_(Task.title.ilike(pattern), Task.description.ilike(pattern)))
+            escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            stmt = stmt.where(
+                or_(
+                    Task.title.ilike(pattern, escape="\\"),
+                    Task.description.ilike(pattern, escape="\\"),
+                )
+            )
 
     if sort == "due_date":
         stmt = stmt.order_by(Task.is_completed.asc(), Task.due_date.asc().nullslast(), Task.created_at.desc())
@@ -360,11 +381,19 @@ def update_task(
     if "due_date" in fields:
         task.due_date = payload.due_date
 
-    # Keep status and is_completed synchronized regardless of which field changed
-    if "status" in fields and payload.status is not None:
+    # Keep status and is_completed synchronized and reject contradictory pairs
+    has_status = "status" in fields and payload.status is not None
+    has_completed = "is_completed" in fields and payload.is_completed is not None
+    if has_status and has_completed:
+        if (payload.status == "done") != payload.is_completed:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Поля status и is_completed противоречат друг другу",
+            )
+    if has_status:
         task.status = payload.status
         task.is_completed = payload.status == "done"
-    elif "is_completed" in fields and payload.is_completed is not None:
+    elif has_completed:
         task.is_completed = payload.is_completed
         task.status = "done" if payload.is_completed else ("todo" if task.status == "done" else task.status)
 
