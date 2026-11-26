@@ -1,10 +1,11 @@
 /* Lightweight PWA service worker: caches static shell only, passes API traffic directly to network. */
-const CACHE_NAME = "task-planner-shell-v2";
+const CACHE_NAME = "task-planner-shell-v3";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
   "./css/styles.css",
   "./js/api.js",
+  "./js/motion.js",
   "./js/app.js",
   "./manifest.webmanifest",
   "./icons/favicon.svg"
