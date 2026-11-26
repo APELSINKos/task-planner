@@ -26,51 +26,121 @@ const PHASE_META = [
 
 const STEP_TARGETS = [0.24, 0.68, 0.96];
 
-const INITIAL_SANDBOX_TASKS = [
-  {
-    id: "sb-1",
-    title: "Спроектировать реляционную схему PostgreSQL в 3НФ",
-    category: "Бэкенд",
-    color: "#0b6a55",
-    priority: "medium",
-    due: "Выполнено",
-    done: true,
-    subtasks: [],
-  },
-  {
-    id: "sb-2",
-    title: "Подготовить защиту практики и живое демо",
-    category: "Практика",
-    color: "#7c3aed",
-    priority: "high",
-    due: "Сегодня, 18:00",
-    done: false,
-    subtasks: [
-      { id: "sb-2a", title: "Проверить адаптив на 390px и тёмную тему", done: true },
-      { id: "sb-2b", title: "Прогнать pytest и Docker healthcheck", done: false },
-    ],
-  },
-  {
-    id: "sb-3",
-    title: "Настроить резервное копирование через pg_dump",
-    category: "Бэкенд",
-    color: "#0b6a55",
-    priority: "medium",
-    due: "Завтра, 14:00",
-    done: false,
-    subtasks: [],
-  },
-  {
-    id: "sb-4",
-    title: "Собрать тезисы выступления на 2 минуты",
-    category: "Учёба",
-    color: "#2563eb",
-    priority: "low",
-    due: "Пятница",
-    done: false,
-    subtasks: [],
-  },
+const SHORT_WEEKDAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+const SHORT_MONTHS_RU = [
+  "янв.",
+  "февр.",
+  "мар.",
+  "апр.",
+  "мая",
+  "июн.",
+  "июл.",
+  "авг.",
+  "сент.",
+  "окт.",
+  "нояб.",
+  "дек.",
 ];
+
+function getLocalDateWithOffset(offsetDays = 0, baseDate = new Date()) {
+  const d = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  d.setDate(d.getDate() + offsetDays);
+  return d;
+}
+
+function getLocalIsoDate(offsetDays = 0, baseDate = new Date()) {
+  const d = getLocalDateWithOffset(offsetDays, baseDate);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function formatShortFutureWeekday(offsetDays, baseDate = new Date()) {
+  const d = getLocalDateWithOffset(offsetDays, baseDate);
+  return SHORT_WEEKDAYS_RU[d.getDay()] || "Скоро";
+}
+
+function formatShortFutureDate(offsetDays, baseDate = new Date()) {
+  const d = getLocalDateWithOffset(offsetDays, baseDate);
+  const wd = SHORT_WEEKDAYS_RU[d.getDay()];
+  const mon = SHORT_MONTHS_RU[d.getMonth()];
+  return `${wd}, ${d.getDate()} ${mon}`;
+}
+
+function getTimeSlot(now = new Date()) {
+  const hour = now.getHours();
+  if (hour < 17) return "day";
+  if (hour < 21) return "evening";
+  return "late";
+}
+
+function getUrgentDueLabel(now = new Date()) {
+  const slot = getTimeSlot(now);
+  if (slot === "day") return "Сегодня, 18:00";
+  if (slot === "evening") return "Сегодня, 22:00";
+  return "Завтра, 10:00";
+}
+
+function getSecondaryDueLabel(now = new Date()) {
+  if (getTimeSlot(now) === "late") {
+    return `${formatShortFutureDate(2, now)}, 14:00`;
+  }
+  return "Завтра, 14:00";
+}
+
+function getUpcomingDueLabel(now = new Date()) {
+  const offset = getTimeSlot(now) === "late" ? 4 : 3;
+  return formatShortFutureDate(offset, now);
+}
+
+function buildInitialSandboxTasks(now = new Date()) {
+  return [
+    {
+      id: "sb-1",
+      title: "Спроектировать реляционную схему PostgreSQL в 3НФ",
+      category: "Бэкенд",
+      color: "#0b6a55",
+      priority: "medium",
+      due: "Выполнено",
+      done: true,
+      subtasks: [],
+    },
+    {
+      id: "sb-2",
+      title: "Подготовить защиту практики и живое демо",
+      category: "Практика",
+      color: "#7c3aed",
+      priority: "high",
+      due: getUrgentDueLabel(now),
+      done: false,
+      subtasks: [
+        { id: "sb-2a", title: "Проверить адаптив на 390px и тёмную тему", done: true },
+        { id: "sb-2b", title: "Прогнать pytest и Docker healthcheck", done: false },
+      ],
+    },
+    {
+      id: "sb-3",
+      title: "Настроить резервное копирование через pg_dump",
+      category: "Бэкенд",
+      color: "#0b6a55",
+      priority: "medium",
+      due: getSecondaryDueLabel(now),
+      done: false,
+      subtasks: [],
+    },
+    {
+      id: "sb-4",
+      title: "Собрать тезисы выступления на 2 минуты",
+      category: "Учёба",
+      color: "#2563eb",
+      priority: "low",
+      due: getUpcomingDueLabel(now),
+      done: false,
+      subtasks: [],
+    },
+  ];
+}
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -93,13 +163,13 @@ function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-function formatRussianToday() {
+function formatRussianToday(baseDate = new Date()) {
   try {
     const formatted = new Intl.DateTimeFormat("ru-RU", {
       weekday: "long",
       day: "numeric",
       month: "long",
-    }).format(new Date());
+    }).format(baseDate);
     return formatted.charAt(0).toUpperCase() + formatted.slice(1);
   } catch (_e) {
     return "Сегодня";
@@ -420,10 +490,10 @@ function initSandboxDemo() {
   const statusEl = document.getElementById("sandbox-status");
   const resetBtn = document.getElementById("btn-sandbox-reset");
 
-  if (!listEl) return;
+  if (!listEl) return { refreshDates: () => {} };
 
-  function cloneInitial() {
-    return INITIAL_SANDBOX_TASKS.map((t) => ({
+  function cloneInitial(now = new Date()) {
+    return buildInitialSandboxTasks(now).map((t) => ({
       ...t,
       subtasks: t.subtasks.map((s) => ({ ...s })),
     }));
@@ -637,20 +707,72 @@ function initSandboxDemo() {
 
   renderSandbox();
   updateMeter();
+
+  return {
+    refreshDates(now = new Date()) {
+      const freshById = new Map(buildInitialSandboxTasks(now).map((t) => [t.id, t.due]));
+      let changed = false;
+      items.forEach((task) => {
+        const nextDue = freshById.get(task.id);
+        if (nextDue && task.due !== nextDue) {
+          task.due = nextDue;
+          changed = true;
+        }
+      });
+      if (changed) {
+        const activeFocus =
+          document.activeElement instanceof HTMLElement && listEl.contains(document.activeElement)
+            ? document.activeElement.dataset.sandboxFocus || null
+            : null;
+        renderSandbox(activeFocus);
+      }
+    },
+  };
+}
+
+function syncStaticDateLabels(now = new Date()) {
+  const todayLabel = formatRussianToday(now);
+  const heroDate = document.getElementById("hero-today-date");
+  if (heroDate) {
+    heroDate.textContent = todayLabel;
+  }
+
+  const wsDate = document.getElementById("ws-date");
+  if (wsDate) {
+    wsDate.textContent = todayLabel;
+  }
+
+  const heroUrgent = document.getElementById("hero-urgent-pill");
+  if (heroUrgent) {
+    heroUrgent.textContent = getUrgentDueLabel(now);
+  }
+
+  document.querySelectorAll("[data-reel-day-offset]").forEach((node) => {
+    const offset = Number(node.getAttribute("data-reel-day-offset"));
+    const cat = node.getAttribute("data-reel-cat") || "";
+    if (!Number.isFinite(offset)) return;
+    const wd = formatShortFutureWeekday(offset, now);
+    node.textContent = cat ? `${cat} · ${wd}` : wd;
+  });
 }
 
 /* Expose helper namespace for app.js */
 window.plannerMotion = {
   formatRussianToday,
+  getLocalIsoDate,
+  getTimeSlot,
   storyController: null,
+  sandboxController: null,
+  syncLiveDates(now = new Date()) {
+    syncStaticDateLabels(now);
+    if (this.sandboxController) {
+      this.sandboxController.refreshDates(now);
+    }
+  },
   init() {
     initThemeToggle();
     this.storyController = initScrollStory();
-    initSandboxDemo();
-
-    const heroDate = document.getElementById("hero-today-date");
-    if (heroDate) {
-      heroDate.textContent = formatRussianToday();
-    }
+    this.sandboxController = initSandboxDemo();
+    this.syncLiveDates();
   },
 };

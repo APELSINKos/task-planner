@@ -37,6 +37,10 @@ const state = {
   tasksRequestSeq: 0,
   detailRequestSeq: 0,
   taskModalSessionSeq: 0,
+  taskModalInitialDueDate: null,
+  togglingTaskIds: new Set(),
+  workspaceDatesStale: false,
+  lastLoadedDate: null,
   lastFocusedElement: null,
   confirmResolver: null,
 };
@@ -192,6 +196,37 @@ function formatDateRu(isoDate) {
   return `${parts[2]}.${parts[1]}.${parts[0]}`;
 }
 
+function getLocalTodayIso(baseDate = new Date()) {
+  if (window.plannerMotion && typeof window.plannerMotion.getLocalIsoDate === "function") {
+    return window.plannerMotion.getLocalIsoDate(0, baseDate);
+  }
+  const y = baseDate.getFullYear();
+  const m = String(baseDate.getMonth() + 1).padStart(2, "0");
+  const d = String(baseDate.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatDueBadge(task, isDetail = false) {
+  if (!task.due_date) return null;
+  const formatted = formatDateRu(task.due_date);
+  if (task.is_overdue) {
+    return {
+      text: isDetail ? `Просрочено: ${formatted}` : `Просрочено · ${formatted}`,
+      modifier: "chip--overdue",
+    };
+  }
+  if (!task.is_completed && task.due_date === getLocalTodayIso()) {
+    return {
+      text: isDetail ? `Срок: сегодня (${formatted})` : `Сегодня · ${formatted}`,
+      modifier: "chip--today",
+    };
+  }
+  return {
+    text: isDetail ? `Срок: ${formatted}` : `До ${formatted}`,
+    modifier: "",
+  };
+}
+
 function createInkCheckbox(checked, ariaLabel, onChange) {
   const wrap = document.createElement("label");
   wrap.className = "ink-check";
@@ -300,6 +335,10 @@ function clearWorkspaceUi() {
   state.tasksRequestSeq += 1;
   state.detailRequestSeq += 1;
   state.taskModalSessionSeq += 1;
+  state.taskModalInitialDueDate = null;
+  state.togglingTaskIds.clear();
+  state.workspaceDatesStale = false;
+  state.lastLoadedDate = null;
 
   el.taskList.innerHTML = "";
   el.categoryList.innerHTML = "";
@@ -372,13 +411,22 @@ function showAuthView(message = "", focusAuth = false) {
 function showAppView() {
   state.showingShowcase = false;
   updateTopbarMode();
-  if (el.wsDate && window.plannerMotion) {
+  if (window.plannerMotion && typeof window.plannerMotion.syncLiveDates === "function") {
+    window.plannerMotion.syncLiveDates();
+  } else if (el.wsDate && window.plannerMotion) {
     el.wsDate.textContent = window.plannerMotion.formatRussianToday();
   }
   if (el.wsGreeting && state.user) {
     el.wsGreeting.textContent = `Здравствуйте, ${state.user.username}`;
   }
   window.scrollTo({ top: 0, behavior: "auto" });
+  const todayIso = getLocalTodayIso();
+  if (
+    state.user &&
+    (state.workspaceDatesStale || (state.lastLoadedDate && state.lastLoadedDate !== todayIso))
+  ) {
+    loadTasks();
+  }
 }
 
 function handleApiError(err, fallbackMessage = "Произошла ошибка") {
@@ -432,6 +480,7 @@ function closeModal(modalElement) {
 
   if (modalElement === el.taskModal) {
     state.taskModalSessionSeq += 1;
+    state.taskModalInitialDueDate = null;
   }
 
   if (modalElement === el.detailModal) {
@@ -712,6 +761,17 @@ function createChip(text, modifier = "", dotColor = null) {
 }
 
 function renderTasks() {
+  let focusedKey = null;
+  let focusedRowIdx = -1;
+  const activeEl = document.activeElement;
+  if (activeEl instanceof HTMLElement && !activeEl.disabled && el.taskList.contains(activeEl)) {
+    focusedKey = activeEl.dataset.focusKey || null;
+    const rowEl = activeEl.closest(".task-row");
+    if (rowEl) {
+      focusedRowIdx = Array.prototype.indexOf.call(el.taskList.children, rowEl);
+    }
+  }
+
   el.taskList.innerHTML = "";
 
   if (state.tasks.length === 0) {
@@ -722,6 +782,9 @@ function renderTasks() {
     } else {
       el.tasksEmptyTitle.textContent = "Список задач пока пуст";
       el.tasksEmptyText.textContent = "Добавьте первую задачу, чтобы наметить план на день.";
+    }
+    if (focusedKey && !el.appView.hidden && el.btnEmptyCreate && !el.tasksEmpty.hidden) {
+      el.btnEmptyCreate.focus({ preventScroll: true });
     }
     return;
   }
@@ -742,6 +805,8 @@ function renderTasks() {
       (checkboxEl) => handleToggleTask(task.id, checkboxEl)
     );
     checkInput.dataset.taskCheck = String(task.id);
+    checkInput.dataset.focusKey = `task:${task.id}:check`;
+    checkInput.disabled = state.togglingTaskIds.has(task.id);
 
     const content = document.createElement("div");
     content.className = "task-row__content";
@@ -749,6 +814,7 @@ function renderTasks() {
     const titleBtn = document.createElement("button");
     titleBtn.type = "button";
     titleBtn.className = "task-row__title-btn";
+    titleBtn.dataset.focusKey = `task:${task.id}:title`;
     titleBtn.textContent = task.title;
     titleBtn.addEventListener("click", () => openDetailModal(task.id));
     content.appendChild(titleBtn);
@@ -773,9 +839,9 @@ function renderTasks() {
       meta.appendChild(createChip(task.category.name, "", task.category.color));
     }
 
-    if (task.due_date) {
-      const dateText = `До ${formatDateRu(task.due_date)}`;
-      meta.appendChild(createChip(dateText, task.is_overdue ? "chip--overdue" : ""));
+    const dueBadge = formatDueBadge(task, false);
+    if (dueBadge) {
+      meta.appendChild(createChip(dueBadge.text, dueBadge.modifier));
     }
 
     if (task.subtasks && task.subtasks.length > 0) {
@@ -793,18 +859,21 @@ function renderTasks() {
     const detailBtn = document.createElement("button");
     detailBtn.type = "button";
     detailBtn.className = "btn btn--secondary btn--compact";
+    detailBtn.dataset.focusKey = `task:${task.id}:detail`;
     detailBtn.textContent = "Подробнее";
     detailBtn.addEventListener("click", () => openDetailModal(task.id));
 
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "btn btn--ghost btn--compact";
+    editBtn.dataset.focusKey = `task:${task.id}:edit`;
     editBtn.textContent = "Изменить";
     editBtn.addEventListener("click", () => openTaskModal(task));
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "btn btn--danger-ghost btn--compact";
+    delBtn.dataset.focusKey = `task:${task.id}:delete`;
     delBtn.textContent = "Удалить";
     delBtn.addEventListener("click", () => handleDeleteTask(task));
 
@@ -816,6 +885,19 @@ function renderTasks() {
     li.appendChild(actions);
     el.taskList.appendChild(li);
   });
+
+  if (focusedKey && !el.appView.hidden) {
+    const exact = el.taskList.querySelector(`[data-focus-key="${focusedKey}"]`);
+    if (exact && !exact.disabled) {
+      exact.focus({ preventScroll: true });
+    } else {
+      const remaining = el.taskList.querySelectorAll("[data-task-check]:not([disabled])");
+      if (remaining.length > 0) {
+        const fallbackIdx = Math.max(0, Math.min(focusedRowIdx, remaining.length - 1));
+        remaining[fallbackIdx].focus({ preventScroll: true });
+      }
+    }
+  }
 }
 
 async function loadWorkspace() {
@@ -869,6 +951,8 @@ async function loadTasks() {
     state.tasks =
       state.statusFilter === "overdue" ? rawTasks.filter((t) => t.is_overdue) : rawTasks;
     state.stats = stats;
+    state.workspaceDatesStale = false;
+    state.lastLoadedDate = getLocalTodayIso();
     el.tasksLoading.hidden = true;
     renderStats();
     syncActiveFiltersUi();
@@ -897,12 +981,15 @@ function openTaskModal(task = null) {
     el.taskCategory.value = task.category_id ? String(task.category_id) : "";
     el.taskPriority.value = task.priority;
     el.taskStatus.value = task.status;
-    el.taskDueDate.value = task.due_date || "";
+    const initialDue = task.due_date || "";
+    el.taskDueDate.value = initialDue;
+    state.taskModalInitialDueDate = initialDue;
   } else {
     el.taskModalTitle.textContent = "Новая задача";
     el.taskId.value = "";
     el.taskPriority.value = "medium";
     el.taskStatus.value = "todo";
+    state.taskModalInitialDueDate = null;
     if (state.selectedCategoryId !== null) {
       el.taskCategory.value = String(state.selectedCategoryId);
     }
@@ -925,16 +1012,26 @@ async function handleSaveTask(event) {
     return;
   }
 
+  if (el.taskDueDate.validity && !el.taskDueDate.validity.valid) {
+    el.taskFormErrorText.textContent = "Укажите корректную дату срока выполнения";
+    el.taskFormError.hidden = false;
+    el.taskDueDate.focus();
+    return;
+  }
+
+  const existingId = el.taskId.value ? Number(el.taskId.value) : null;
+  const currentDueDate = el.taskDueDate.value || "";
   const payload = {
     title,
     description: el.taskDescription.value.trim() || null,
     category_id: el.taskCategory.value ? Number(el.taskCategory.value) : null,
     priority: el.taskPriority.value,
     status: el.taskStatus.value,
-    due_date: el.taskDueDate.value || null,
   };
+  if (!existingId || currentDueDate !== (state.taskModalInitialDueDate ?? "")) {
+    payload.due_date = currentDueDate || null;
+  }
 
-  const existingId = el.taskId.value ? Number(el.taskId.value) : null;
   const saveModalSeq = state.taskModalSessionSeq;
   if (el.btnSaveTask) el.btnSaveTask.disabled = true;
   try {
@@ -973,17 +1070,62 @@ async function handleSaveTask(event) {
 }
 
 async function handleToggleTask(taskId, checkboxEl = null) {
+  if (state.togglingTaskIds.has(taskId)) {
+    if (checkboxEl) checkboxEl.checked = !checkboxEl.checked;
+    return;
+  }
+  // Capture activeElement BEFORE setting disabled=true (Chromium blurs disabled controls)
   const restoreCheckFocus = Boolean(checkboxEl && document.activeElement === checkboxEl);
+  const restoreDetailToggleFocus = Boolean(
+    el.btnDetailToggle && document.activeElement === el.btnDetailToggle
+  );
   const prevIdx = state.tasks.findIndex((t) => t.id === taskId);
+
+  state.togglingTaskIds.add(taskId);
+  if (state.activeDetailTaskId === taskId && el.btnDetailToggle) {
+    el.btnDetailToggle.disabled = true;
+  }
+  if (checkboxEl) checkboxEl.disabled = true;
+
+  let toggledOk = false;
   try {
     await api.toggleTask(taskId);
+    toggledOk = true;
     await loadTasks();
-    if (restoreCheckFocus) {
-      const rebuilt = el.taskList.querySelector(`[data-task-check="${taskId}"]`);
-      if (rebuilt) {
-        rebuilt.focus({ preventScroll: true });
+    if (state.activeDetailTaskId === taskId && !el.detailModal.hidden) {
+      await renderDetailTask(taskId);
+    }
+  } catch (err) {
+    if (checkboxEl && !toggledOk) {
+      checkboxEl.checked = !checkboxEl.checked;
+    }
+    handleApiError(err, "Не удалось обновить статус задачи");
+  } finally {
+    state.togglingTaskIds.delete(taskId);
+    if (checkboxEl && checkboxEl.isConnected) {
+      checkboxEl.disabled = false;
+    }
+    const rebuiltCheck = el.taskList.querySelector(`[data-task-check="${taskId}"]`);
+    if (rebuiltCheck) {
+      rebuiltCheck.disabled = false;
+    }
+    if (el.btnDetailToggle && state.activeDetailTaskId === taskId) {
+      el.btnDetailToggle.disabled = false;
+    }
+
+    const activeNow = document.activeElement;
+    const focusUnclaimed =
+      !activeNow ||
+      activeNow === document.body ||
+      activeNow === checkboxEl ||
+      activeNow === el.btnDetailToggle ||
+      !activeNow.isConnected;
+
+    if (restoreCheckFocus && focusUnclaimed && !el.appView.hidden && !getTopOpenModal()) {
+      if (rebuiltCheck && !rebuiltCheck.disabled) {
+        rebuiltCheck.focus({ preventScroll: true });
       } else {
-        const remaining = el.taskList.querySelectorAll("[data-task-check]");
+        const remaining = el.taskList.querySelectorAll("[data-task-check]:not([disabled])");
         if (remaining.length > 0) {
           const fallbackIdx = Math.max(0, Math.min(prevIdx, remaining.length - 1));
           remaining[fallbackIdx].focus({ preventScroll: true });
@@ -991,15 +1133,17 @@ async function handleToggleTask(taskId, checkboxEl = null) {
           el.btnEmptyCreate.focus({ preventScroll: true });
         }
       }
+    } else if (
+      restoreDetailToggleFocus &&
+      focusUnclaimed &&
+      state.activeDetailTaskId === taskId &&
+      !el.detailModal.hidden &&
+      getTopOpenModal() === el.detailModal &&
+      el.btnDetailToggle &&
+      !el.btnDetailToggle.disabled
+    ) {
+      el.btnDetailToggle.focus({ preventScroll: true });
     }
-    if (state.activeDetailTaskId === taskId && !el.detailModal.hidden) {
-      await renderDetailTask(taskId);
-    }
-  } catch (err) {
-    if (checkboxEl) {
-      checkboxEl.checked = !checkboxEl.checked;
-    }
-    handleApiError(err, "Не удалось обновить статус задачи");
   }
 }
 
@@ -1070,27 +1214,37 @@ async function renderDetailTask(taskId, expectedSeq = null) {
 
   el.detailBadges.innerHTML = "";
   el.detailBadges.appendChild(
-    createChip(PRIORITY_LABELS[task.priority], `chip--prio-${task.priority}`)
+    createChip(PRIORITY_LABELS[task.priority] || task.priority, `chip--prio-${task.priority}`)
   );
-  el.detailBadges.appendChild(createChip(STATUS_LABELS[task.status]));
+  el.detailBadges.appendChild(createChip(STATUS_LABELS[task.status] || task.status));
   if (task.category) {
     el.detailBadges.appendChild(createChip(task.category.name, "", task.category.color));
   }
-  if (task.due_date) {
-    el.detailBadges.appendChild(
-      createChip(`Срок: ${formatDateRu(task.due_date)}`, task.is_overdue ? "chip--overdue" : "")
-    );
+  const detailDue = formatDueBadge(task, true);
+  if (detailDue) {
+    el.detailBadges.appendChild(createChip(detailDue.text, detailDue.modifier));
   }
 
   el.detailDescription.textContent = task.description || "Описание не указано.";
   el.detailDates.textContent = `Создано: ${new Date(task.created_at).toLocaleString("ru-RU")}`;
 
   el.btnDetailToggle.textContent = task.is_completed ? "Вернуть в работу" : "Отметить выполненной";
+  el.btnDetailToggle.disabled = state.togglingTaskIds.has(task.id);
   el.btnDetailToggle.onclick = () => handleToggleTask(task.id);
   el.btnDetailEdit.onclick = () => {
     closeModal(el.detailModal);
     openTaskModal(task);
   };
+
+  let focusedSubKey = null;
+  const activeSubEl = document.activeElement;
+  if (
+    activeSubEl instanceof HTMLElement &&
+    !activeSubEl.disabled &&
+    el.detailSubtaskList.contains(activeSubEl)
+  ) {
+    focusedSubKey = activeSubEl.dataset.focusKey || null;
+  }
 
   el.detailSubtaskList.innerHTML = "";
   const subtasks = task.subtasks || [];
@@ -1116,24 +1270,54 @@ async function renderDetailTask(taskId, expectedSeq = null) {
         sub.is_completed,
         `Отметить подзадачу «${sub.title}» выполненной`,
         async (cbEl) => {
+          if (cbEl.disabled) return;
           const hadFocus = document.activeElement === cbEl;
+          cbEl.disabled = true;
+          let toggledSubOk = false;
+          let rebuilt = null;
           try {
             await api.toggleSubtask(sub.id);
+            toggledSubOk = true;
             if (state.activeDetailTaskId === task.id && !el.detailModal.hidden) {
               const rendered = await renderDetailTask(task.id);
-              if (rendered && hadFocus) {
-                const rebuilt = el.detailSubtaskList.querySelector(`[data-subtask-check="${sub.id}"]`);
-                if (rebuilt) rebuilt.focus({ preventScroll: true });
+              if (rendered) {
+                rebuilt = el.detailSubtaskList.querySelector(`[data-subtask-check="${sub.id}"]`);
               }
             }
             await loadTasks();
           } catch (err) {
-            cbEl.checked = !cbEl.checked;
+            if (!toggledSubOk) {
+              cbEl.checked = !cbEl.checked;
+            }
             handleApiError(err, "Не удалось обновить подзадачу");
+          } finally {
+            if (cbEl.isConnected) {
+              cbEl.disabled = false;
+            }
+            const activeNow = document.activeElement;
+            const focusUnclaimed =
+              !activeNow ||
+              activeNow === document.body ||
+              activeNow === cbEl ||
+              !activeNow.isConnected;
+            if (
+              hadFocus &&
+              focusUnclaimed &&
+              state.activeDetailTaskId === task.id &&
+              !el.detailModal.hidden &&
+              getTopOpenModal() === el.detailModal
+            ) {
+              if (rebuilt && rebuilt.isConnected && !rebuilt.disabled) {
+                rebuilt.focus({ preventScroll: true });
+              } else if (cbEl.isConnected && !cbEl.disabled) {
+                cbEl.focus({ preventScroll: true });
+              }
+            }
           }
         }
       );
       cbInput.dataset.subtaskCheck = String(sub.id);
+      cbInput.dataset.focusKey = `sub:${sub.id}:check`;
 
       const text = document.createElement("span");
       text.textContent = sub.title;
@@ -1144,27 +1328,53 @@ async function renderDetailTask(taskId, expectedSeq = null) {
       delBtn.type = "button";
       delBtn.className = "icon-btn icon-btn--quiet";
       delBtn.dataset.subtaskDel = String(sub.id);
+      delBtn.dataset.focusKey = `sub:${sub.id}:delete`;
       delBtn.textContent = "×";
       delBtn.setAttribute("aria-label", `Удалить подзадачу ${sub.title}`);
       delBtn.addEventListener("click", async () => {
+        if (delBtn.disabled) return;
         const hadFocus = document.activeElement === delBtn;
+        delBtn.disabled = true;
+        let renderedAfterDelete = false;
         try {
           await api.deleteSubtask(sub.id);
           if (state.activeDetailTaskId === task.id && !el.detailModal.hidden) {
-            const rendered = await renderDetailTask(task.id);
-            if (rendered && hadFocus) {
-              const remainingBtns = el.detailSubtaskList.querySelectorAll("[data-subtask-del]");
+            renderedAfterDelete = await renderDetailTask(task.id);
+          }
+          await loadTasks();
+        } catch (err) {
+          handleApiError(err, "Не удалось удалить подзадачу");
+        } finally {
+          if (delBtn.isConnected) {
+            delBtn.disabled = false;
+          }
+          const activeNow = document.activeElement;
+          const focusUnclaimed =
+            !activeNow ||
+            activeNow === document.body ||
+            activeNow === delBtn ||
+            !activeNow.isConnected;
+          if (
+            hadFocus &&
+            focusUnclaimed &&
+            state.activeDetailTaskId === task.id &&
+            !el.detailModal.hidden &&
+            getTopOpenModal() === el.detailModal
+          ) {
+            if (renderedAfterDelete) {
+              const remainingBtns = el.detailSubtaskList.querySelectorAll(
+                "[data-subtask-del]:not([disabled])"
+              );
               if (remainingBtns.length > 0) {
                 const nextBtn = remainingBtns[Math.min(subIdx, remainingBtns.length - 1)];
                 nextBtn.focus({ preventScroll: true });
               } else if (el.newSubtaskTitle) {
                 el.newSubtaskTitle.focus({ preventScroll: true });
               }
+            } else if (delBtn.isConnected && !delBtn.disabled) {
+              delBtn.focus({ preventScroll: true });
             }
           }
-          await loadTasks();
-        } catch (err) {
-          handleApiError(err, "Не удалось удалить подзадачу");
         }
       });
 
@@ -1172,6 +1382,15 @@ async function renderDetailTask(taskId, expectedSeq = null) {
       li.appendChild(delBtn);
       el.detailSubtaskList.appendChild(li);
     });
+  }
+
+  if (focusedSubKey && !el.detailModal.hidden) {
+    const exactSub = el.detailSubtaskList.querySelector(`[data-focus-key="${focusedSubKey}"]`);
+    if (exactSub && !exactSub.disabled) {
+      exactSub.focus({ preventScroll: true });
+    } else if (el.newSubtaskTitle) {
+      el.newSubtaskTitle.focus({ preventScroll: true });
+    }
   }
   return true;
 }
@@ -1276,13 +1495,18 @@ function bindEvents() {
 
   el.btnToggleShowcase.addEventListener("click", () => {
     if (!state.user) return;
-    state.showingShowcase = !state.showingShowcase;
-    if (state.showingShowcase) {
+    if (!state.showingShowcase) {
+      state.showingShowcase = true;
       state.detailRequestSeq += 1;
       closeAllModals();
+      if (window.plannerMotion && typeof window.plannerMotion.syncLiveDates === "function") {
+        window.plannerMotion.syncLiveDates();
+      }
+      updateTopbarMode();
+      window.scrollTo({ top: 0, behavior: "auto" });
+    } else {
+      showAppView();
     }
-    updateTopbarMode();
-    window.scrollTo({ top: 0, behavior: "auto" });
   });
 
   el.loginForm.addEventListener("submit", async (event) => {
@@ -1316,10 +1540,17 @@ function bindEvents() {
     const username = document.getElementById("reg-username").value.trim();
     const email = document.getElementById("reg-email").value.trim();
     const password = document.getElementById("reg-password").value;
-    if (username.length < 3 || !email || password.length < 6) {
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const passwordBytes =
+      typeof TextEncoder === "function" ? new TextEncoder().encode(password).length : password.length;
+    if (username.length < 3 || !emailValid || password.length < 6) {
       showAuthError(
         "Проверьте корректность имени (от 3 символов), email и пароля (от 6 символов)"
       );
+      return;
+    }
+    if (passwordBytes > 72) {
+      showAuthError("Пароль превышает допустимую длину (72 байта в UTF-8)");
       return;
     }
     if (el.registerSubmitBtn) el.registerSubmitBtn.disabled = true;
@@ -1586,6 +1817,71 @@ async function initSession() {
   }
 }
 
+function initDateRefreshWatcher() {
+  let lastDate = getLocalTodayIso();
+  let lastSlot =
+    window.plannerMotion && typeof window.plannerMotion.getTimeSlot === "function"
+      ? window.plannerMotion.getTimeSlot()
+      : "";
+  let refreshInFlight = false;
+
+  async function checkDateFreshness() {
+    if (refreshInFlight) return;
+    const now = new Date();
+    const nextDate = getLocalTodayIso(now);
+    const nextSlot =
+      window.plannerMotion && typeof window.plannerMotion.getTimeSlot === "function"
+        ? window.plannerMotion.getTimeSlot(now)
+        : "";
+    const dayChanged = nextDate !== lastDate;
+    const slotChanged = nextSlot !== lastSlot;
+    const workspaceNeedsRefresh = Boolean(
+      state.user &&
+        !state.showingShowcase &&
+        (dayChanged ||
+          state.workspaceDatesStale ||
+          (state.lastLoadedDate && state.lastLoadedDate !== nextDate))
+    );
+
+    if (!dayChanged && !slotChanged && !workspaceNeedsRefresh) {
+      return;
+    }
+    lastDate = nextDate;
+    lastSlot = nextSlot;
+
+    if (
+      (dayChanged || slotChanged) &&
+      window.plannerMotion &&
+      typeof window.plannerMotion.syncLiveDates === "function"
+    ) {
+      window.plannerMotion.syncLiveDates(now);
+    }
+    if (dayChanged && state.user && state.showingShowcase) {
+      state.workspaceDatesStale = true;
+    } else if (workspaceNeedsRefresh) {
+      refreshInFlight = true;
+      try {
+        await loadTasks();
+        if (state.activeDetailTaskId && !el.detailModal.hidden) {
+          try {
+            await renderDetailTask(state.activeDetailTaskId);
+          } catch (_e) {}
+        }
+      } finally {
+        refreshInFlight = false;
+      }
+    }
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      checkDateFreshness();
+    }
+  });
+  window.addEventListener("focus", checkDateFreshness);
+  setInterval(checkDateFreshness, 60000);
+}
+
 // Register lightweight PWA service worker when supported
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -1597,4 +1893,5 @@ if (window.plannerMotion) {
   window.plannerMotion.init();
 }
 bindEvents();
+initDateRefreshWatcher();
 initSession();

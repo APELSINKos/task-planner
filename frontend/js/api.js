@@ -1,6 +1,34 @@
 /* REST API client using Fetch API, async/await, and Bearer JWT authentication. */
 
 const TOKEN_STORAGE_KEY = "task_planner_jwt";
+let _memoryToken = null;
+let _memoryAuthoritative = false;
+
+function _safeStorageGet(key) {
+  try {
+    return { ok: true, value: localStorage.getItem(key) };
+  } catch (_e) {
+    return { ok: false, value: null };
+  }
+}
+
+function _safeStorageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return { ok: true };
+  } catch (_e) {
+    return { ok: false };
+  }
+}
+
+function _safeStorageRemove(key) {
+  try {
+    localStorage.removeItem(key);
+    return { ok: true };
+  } catch (_e) {
+    return { ok: false };
+  }
+}
 
 class ApiError extends Error {
   constructor(message, status) {
@@ -12,15 +40,25 @@ class ApiError extends Error {
 
 const api = {
   getToken() {
-    return localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (_memoryAuthoritative) {
+      return _memoryToken;
+    }
+    const res = _safeStorageGet(TOKEN_STORAGE_KEY);
+    if (res.ok) {
+      const value = res.value || null;
+      _memoryToken = value;
+      return value;
+    }
+    return _memoryToken;
   },
 
   setToken(token) {
-    if (token) {
-      localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    } else {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
-    }
+    const normalized = token || null;
+    _memoryToken = normalized;
+    const res = normalized
+      ? _safeStorageSet(TOKEN_STORAGE_KEY, normalized)
+      : _safeStorageRemove(TOKEN_STORAGE_KEY);
+    _memoryAuthoritative = !res.ok;
   },
 
   async request(path, options = {}) {
@@ -101,6 +139,9 @@ const api = {
     const query = new URLSearchParams();
     if (params.completed !== undefined && params.completed !== null) {
       query.set("completed", String(params.completed));
+    }
+    if (params.status) {
+      query.set("status", params.status);
     }
     if (params.priority) {
       query.set("priority", params.priority);

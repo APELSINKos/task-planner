@@ -304,6 +304,7 @@ docker compose down
 | `JWT_EXPIRE_MINUTES` | `1440` | Время жизни токена в минутах (24 часа) |
 | `CORS_ORIGINS` | `http://localhost:8080,http://127.0.0.1:8080` | Разрешённые источники CORS |
 | `APP_PORT` | `8080` | Внешний порт контейнера Nginx |
+| `TZ` | `Europe/Moscow` | Часовой пояс бэкенда для расчёта сроков и просрочек (`is_overdue`) |
 
 ---
 
@@ -349,7 +350,7 @@ TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/register \
 curl -s -X POST http://localhost:8080/api/tasks \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"title":"Проверить развёртывание Docker Compose","priority":"high","due_date":"2026-12-01"}'
+  -d '{"title":"Проверить развёртывание Docker Compose","priority":"high","due_date":"2027-01-15"}'
 
 # 4. Получение сводной статистики
 curl -s http://localhost:8080/api/tasks/stats \

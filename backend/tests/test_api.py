@@ -14,6 +14,7 @@ from app.database import Base, get_db
 import app.main as app_main
 from app.main import app
 from app.models import Subtask, User
+import app.schemas as app_schemas
 
 
 @pytest.fixture()
@@ -52,6 +53,17 @@ def client(monkeypatch: pytest.MonkeyPatch):
     app.dependency_overrides.clear()
     Base.metadata.drop_all(bind=engine)
     engine.dispose()
+
+
+def _pin_today(monkeypatch: pytest.MonkeyPatch, fixed_today: date) -> date:
+    class _FixedDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return fixed_today
+
+    monkeypatch.setattr(app_schemas, "date", _FixedDate)
+    monkeypatch.setattr(app_main, "date", _FixedDate)
+    return fixed_today
 
 
 def _register_and_headers(client: TestClient, username: str, email: str, password: str = "secret123") -> dict[str, str]:
@@ -211,13 +223,14 @@ def test_categories_crud_and_defaults(client: TestClient):
     assert task_after.json()["category_id"] is None
 
 
-def test_tasks_crud_toggle_filters_and_stats(client: TestClient):
+def test_tasks_crud_toggle_filters_and_stats(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     headers = _register_and_headers(client, "task_user", "tasks@example.com")
     cats = client.get("/api/categories", headers=headers).json()
     cat_id = cats[0]["id"]
 
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
-    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    fixed_today = _pin_today(monkeypatch, date(2026, 11, 26))
+    yesterday = (fixed_today - timedelta(days=1)).isoformat()
+    tomorrow = (fixed_today + timedelta(days=1)).isoformat()
 
     t1 = client.post(
         "/api/tasks",
@@ -294,7 +307,7 @@ def test_tasks_crud_toggle_filters_and_stats(client: TestClient):
     }
 
     # Verify sort order across active tasks (priority rank, due_date asc NULLS LAST, completed last)
-    two_days_ago = (date.today() - timedelta(days=2)).isoformat()
+    two_days_ago = (fixed_today - timedelta(days=2)).isoformat()
     t3_id = client.post(
         "/api/tasks",
         headers=headers,
@@ -436,7 +449,10 @@ def test_edge_cases_password_bytes_search_escaping_and_status_conflict(client: T
     assert client.get("/api/auth/me", headers={"Authorization": f"Bearer {expired}"}).status_code == 401
 
 
-def test_category_rename_conflict_task_null_clear_and_long_login(client: TestClient):
+def test_category_rename_conflict_task_null_clear_and_long_login(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
     headers = _register_and_headers(client, "qa_user", "qa@example.com")
 
     # Login with >72 UTF-8 byte Cyrillic password must return 401, never 500 or silent truncation
@@ -472,12 +488,17 @@ def test_category_rename_conflict_task_null_clear_and_long_login(client: TestCli
     )
     assert dup_rename.status_code == 409
 
+    # Pin date.today() so the due-today boundary assertion is deterministic across midnight
+    fixed_today = _pin_today(monkeypatch, date(2026, 11, 26))
+
     # Clearing nullable fields category_id and due_date via PUT -> null persisted
     created = client.post(
         "/api/tasks",
         headers=headers,
-        json={"title": "Задача с категорией и сроком", "category_id": c1_id, "due_date": date.today().isoformat()},
+        json={"title": "Задача с категорией и сроком", "category_id": c1_id, "due_date": fixed_today.isoformat()},
     ).json()
+    assert created["is_overdue"] is False
+    assert client.get("/api/tasks/stats", headers=headers).json()["overdue"] == 0
     cleared = client.put(
         f"/api/tasks/{created['id']}",
         headers=headers,

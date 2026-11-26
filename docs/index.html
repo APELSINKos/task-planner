@@ -157,7 +157,7 @@
             <div class="hero-window" id="hero-window">
               <div class="hero-window__bar">
                 <div class="hero-window__meta">
-                  <span class="hero-window__date" id="hero-today-date">Четверг, 26 ноября</span>
+                  <span class="hero-window__date" id="hero-today-date">Сегодня</span>
                   <span class="hero-window__sub">Фокус на сегодня</span>
                 </div>
                 <div class="hero-window__progress-wrap">
@@ -190,7 +190,7 @@
                   <div class="hero-task__content">
                     <span class="hero-task__title">Проверить мобильную версию и доступность WCAG 2.0</span>
                     <div class="hero-task__subline">
-                      <span class="hero-task__pill hero-task__pill--urgent">Сегодня, 18:00</span>
+                      <span class="hero-task__pill hero-task__pill--urgent" id="hero-urgent-pill">Сегодня</span>
                       <span class="hero-task__pill">Подзадачи 2/3</span>
                     </div>
                   </div>
@@ -308,7 +308,7 @@
                     <span class="stage-slip__bar stage-slip__bar--low"></span>
                     <span class="stage-slip__dot" style="background:#0f766e"></span>
                     <span class="stage-slip__text">Обновить README и схему развёртывания</span>
-                    <span class="stage-slip__meta">Работа · Пт</span>
+                    <span class="stage-slip__meta" data-reel-cat="Работа" data-reel-day-offset="1">Работа · Завтра</span>
                   </div>
 
                   <div class="stage-slip stage-slip--featured" data-slip="1">
@@ -351,14 +351,14 @@
                     <span class="stage-slip__bar stage-slip__bar--med"></span>
                     <span class="stage-slip__dot" style="background:#2563eb"></span>
                     <span class="stage-slip__text">Проверить бэкап PostgreSQL через pg_dump</span>
-                    <span class="stage-slip__meta">Учёба · Чт</span>
+                    <span class="stage-slip__meta" data-reel-cat="Учёба" data-reel-day-offset="2">Учёба · Скоро</span>
                   </div>
 
                   <div class="stage-slip" data-slip="3">
                     <span class="stage-slip__bar stage-slip__bar--low"></span>
                     <span class="stage-slip__dot" style="background:#b45309"></span>
-                    <span class="stage-slip__text">Составить план подготовки к зимней сессии</span>
-                    <span class="stage-slip__meta">Личное · Вс</span>
+                    <span class="stage-slip__text">Составить план подготовки к экзаменам</span>
+                    <span class="stage-slip__meta" data-reel-cat="Личное" data-reel-day-offset="4">Личное · На неделе</span>
                   </div>
 
                   <!-- Phase 3 summary telemetry bar -->
@@ -975,7 +975,7 @@
 
             <div class="form__group">
               <label class="form__label" for="task-due-date">Срок выполнения</label>
-              <input class="form__input" type="date" id="task-due-date">
+              <input class="form__input" type="date" id="task-due-date" max="9999-12-31">
             </div>
           </div>
 
