@@ -1574,6 +1574,7 @@ function bindEvents() {
     closeAllModals();
     el.loginForm.reset();
     el.registerForm.reset();
+    setAuthTab("login");
     showAuthView();
   });
 
@@ -1779,12 +1780,35 @@ function bindEvents() {
       }
     }
   });
+  window.addEventListener("storage", (event) => {
+    if (event.key !== "task_planner_jwt" && event.key !== "task_planner_ghpages_token") {
+      return;
+    }
+    if (!event.newValue) {
+      resetFilters();
+      closeAllModals();
+      showAuthView();
+    } else if (event.newValue !== event.oldValue) {
+      resetFilters();
+      closeAllModals();
+      initSession();
+    }
+  });
 }
 
 async function initSession() {
   if (api.isDemoMode) {
     el.btnTopbarDemo.hidden = false;
     el.authDemoWrap.hidden = false;
+    const authLead = document.querySelector(".auth-shell__lead");
+    if (authLead) {
+      authLead.textContent =
+        "Создайте собственный профиль прямо в браузере или откройте готовое демо — аккаунты, категории и задачи изолированы и сохраняются локально.";
+    }
+    const authSub = document.querySelector(".auth-card__sub");
+    if (authSub) {
+      authSub.textContent = "Локальные профили в браузере · проверка пароля и изоляция данных";
+    }
     if (el.footerApiLink) {
       el.footerApiLink.href = "https://github.com/APELSINKos/task-planner";
       el.footerApiLink.textContent = "Исходный код на GitHub";

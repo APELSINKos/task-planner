@@ -1,17 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Планировщик задач">
-  <defs>
-    <linearGradient id="spruce-bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#118068"/>
-      <stop offset="100%" stop-color="#084f3f"/>
-    </linearGradient>
-    <linearGradient id="inner-glow" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
-  <rect x="3" y="3" width="58" height="58" rx="16" fill="url(#spruce-bg)"/>
-  <rect x="3.75" y="3.75" width="56.5" height="56.5" rx="15.25" fill="none" stroke="url(#inner-glow)" stroke-width="1.5"/>
-  <rect x="14" y="16" width="36" height="32" rx="9" fill="#ffffff" fill-opacity="0.14"/>
-  <path d="M22.5 32.5 L29.2 39.2 L42.5 24.8" fill="none" stroke="#ffffff" stroke-width="4.75" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="46" cy="43" r="3" fill="#6ee7c8"/>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="#0d1412" stroke="#24352f" stroke-width="1.5"/>
+  <polygon points="15.5,32.5 27,44 31.1,39.9 19.6,28.4" fill="#f4f7f6"/>
+  <polygon points="27,44 48.2,21.4 44,17.4 27,35.6" fill="#2dd4a4"/>
+  <polygon points="27,44 31.1,39.9 27,35.6" fill="#0b6a55"/>
 </svg>
