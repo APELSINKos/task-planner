@@ -1,5 +1,5 @@
 /* Lightweight PWA service worker: caches static shell only, passes API traffic directly to network. */
-const CACHE_NAME = "task-planner-shell-v1";
+const CACHE_NAME = "task-planner-shell-v2";
 const SHELL_ASSETS = [
   "./",
   "./index.html",

@@ -1,6 +1,7 @@
 """Automated API tests for Task Planner backend."""
 
 from datetime import date, timedelta
+import os
 
 from fastapi.testclient import TestClient
 import pytest
@@ -14,19 +15,24 @@ from app.main import app
 
 @pytest.fixture()
 def client():
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    test_db_url = os.getenv("TEST_DATABASE_URL")
+    if test_db_url:
+        engine = create_engine(test_db_url, pool_pre_ping=True)
+    else:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
 
-    @event.listens_for(engine, "connect")
-    def _enable_fk(dbapi_conn, _record):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+        @event.listens_for(engine, "connect")
+        def _enable_fk(dbapi_conn, _record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
     def override_get_db():
@@ -281,11 +287,13 @@ def test_user_data_isolation_and_validation(client: TestClient):
         f"/api/tasks/{task1_id}/subtasks", headers=h1, json={"title": "Внутренний шаг"}
     ).json()["id"]
 
-    # User 2 cannot view, edit, toggle, or delete User 1's task or subtask
+    # User 2 cannot view, edit, toggle, or delete User 1's task, category, or subtask
     assert client.get(f"/api/tasks/{task1_id}", headers=h2).status_code == 404
     assert client.put(f"/api/tasks/{task1_id}", headers=h2, json={"title": "Взлом"}).status_code == 404
     assert client.patch(f"/api/tasks/{task1_id}/toggle", headers=h2).status_code == 404
     assert client.delete(f"/api/tasks/{task1_id}", headers=h2).status_code == 404
+    assert client.put(f"/api/categories/{cat1_id}", headers=h2, json={"name": "Чужая"}).status_code == 404
+    assert client.delete(f"/api/categories/{cat1_id}", headers=h2).status_code == 404
     assert client.patch(f"/api/subtasks/{sub1_id}/toggle", headers=h2).status_code == 404
     assert client.delete(f"/api/subtasks/{sub1_id}", headers=h2).status_code == 404
 
@@ -340,4 +348,43 @@ def test_edge_cases_password_bytes_search_escaping_and_status_conflict(client: T
         algorithm=settings.jwt_algorithm,
     )
     assert client.get("/api/auth/me", headers={"Authorization": f"Bearer {expired}"}).status_code == 401
+
+
+def test_category_rename_conflict_task_null_clear_and_long_login(client: TestClient):
+    headers = _register_and_headers(client, "qa_user", "qa@example.com")
+
+    # Login with >72 UTF-8 byte Cyrillic password must return 401, never 500
+    long_login = client.post(
+        "/api/auth/login",
+        json={"login": "qa_user", "password": "пароль" * 7},
+    )
+    assert long_login.status_code == 401
+
+    cats = client.get("/api/categories", headers=headers).json()
+    c1_id = cats[0]["id"]
+    c2_name = cats[1]["name"]
+
+    # Renaming category to an existing category name (different Cyrillic case) -> 409
+    dup_rename = client.put(
+        f"/api/categories/{c1_id}",
+        headers=headers,
+        json={"name": c2_name.upper()},
+    )
+    assert dup_rename.status_code == 409
+
+    # Clearing nullable fields category_id and due_date via PUT -> null persisted
+    created = client.post(
+        "/api/tasks",
+        headers=headers,
+        json={"title": "Задача с категорией и сроком", "category_id": c1_id, "due_date": date.today().isoformat()},
+    ).json()
+    cleared = client.put(
+        f"/api/tasks/{created['id']}",
+        headers=headers,
+        json={"category_id": None, "due_date": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["category_id"] is None
+    assert cleared.json()["due_date"] is None
+
 

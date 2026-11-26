@@ -6,7 +6,7 @@ from datetime import date
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import case, func, or_, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import create_access_token, get_current_user, hash_password, verify_password
@@ -88,7 +88,13 @@ def _validate_user_category(db: Session, user_id: int, category_id: int | None) 
 
 @app.get("/api/health", tags=["Система"])
 def healthcheck(db: Session = Depends(get_db)):
-    db.execute(text("SELECT 1"))
+    try:
+        db.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="База данных недоступна",
+        )
     return {"status": "ok", "database": "connected"}
 
 
@@ -231,7 +237,14 @@ def update_category(
     if payload.color is not None:
         category.color = payload.color
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Категория с таким названием уже существует",
+        )
     db.refresh(category)
     return category
 
